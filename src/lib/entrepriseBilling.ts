@@ -103,7 +103,7 @@ export const ABONNEMENT_PLANS: BillingPlan[] = [
     name: "Starter",
     description: "Pour démarrer simplement avec un premier volume d'annonces.",
     monthlyPriceCents: 3900,
-    yearlyPriceCents: 34800,
+    yearlyPriceCents: 46800,
     features: [
       "1 annonce active",
       "Messagerie avec les talents",
@@ -116,7 +116,7 @@ export const ABONNEMENT_PLANS: BillingPlan[] = [
     name: "Boost",
     description: "Pour recruter plus vite avec des outils de tri avancés.",
     monthlyPriceCents: 14900,
-    yearlyPriceCents: 130800,
+    yearlyPriceCents: 178800,
     features: [
       "Jusqu'à 5 annonces actives",
       "Questions de présélection",
@@ -129,7 +129,7 @@ export const ABONNEMENT_PLANS: BillingPlan[] = [
     name: "Premium Intérim",
     description: "Pour agences et structures qui recrutent en continu.",
     monthlyPriceCents: 34900,
-    yearlyPriceCents: 298800,
+    yearlyPriceCents: 418800,
     features: [
       "Annonces prioritaires",
       "Profils matchés mis en avant",

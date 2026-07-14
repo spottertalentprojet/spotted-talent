@@ -1,4 +1,4 @@
-﻿import { envoyerEmail, emailCandidatureStatut } from "@/lib/emails";
+import { envoyerEmail, emailCandidatureStatut } from "@/lib/emails";
 import { useAuth } from "@/contexts/AuthContext";
 import { useNavigate } from "react-router-dom";
 import { Button } from "@/components/ui/button";
@@ -1083,7 +1083,7 @@ const AbonnementEntrepriseTab = ({
                     onConfirm={() => activerModeTest(plan.id)}
                   >
                     <Button variant="ghost-glow" className="w-full">
-                      Activer en mode test
+                      Démarrer l'essai gratuit
                     </Button>
                   </ConfirmActionDialog>
                 ) : (
