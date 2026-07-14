@@ -1094,7 +1094,9 @@ const AbonnementEntrepriseTab = ({
   const priceSuffix = billingCycle === "yearly" ? "HT /an" : "HT /mois";
   const selectedPlan = getPlanById(selectedPlanId);
   const isStripeTrialAvailable = billingState.subscriptionStatus === "trial" && !trialLockedPlanId;
-  const hasManagedStripeSubscription = isActive || isConfirmedTrial || isPastDue;
+  const hasStripeCustomerLink = Boolean(billingState.stripeCustomerId);
+  const hasManagedStripeSubscription = hasStripeCustomerLink && (isActive || isConfirmedTrial || isPastDue);
+  const needsStripeCheckoutRepair = !hasStripeCustomerLink && (isActive || isConfirmedTrial || isPastDue);
   const statusLabel = isActive
     ? "Actif"
     : isPastDue
@@ -1313,11 +1315,15 @@ const AbonnementEntrepriseTab = ({
                               : "Changer de formule dans Stripe"
                         : isStripeTrialAvailable
                           ? "Essai 30 jours avec carte"
+                          : needsStripeCheckoutRepair && currentSubscription
+                            ? "Recréer le lien Stripe sécurisé"
                           : "Paiement sécurisé"}
                 </Button>
                 {billingState.subscriptionStatus === "trial" && (
                   <p className="text-center text-xs text-muted-foreground">
-                    {isStripeTrialAvailable
+                    {needsStripeCheckoutRepair && currentSubscription
+                      ? "Le compte indique un essai, mais aucun client Stripe n'est relié. Stripe redemandera la carte pour recréer le lien sécurisé."
+                      : isStripeTrialAvailable
                       ? "Essai unique: Stripe demandera une carte, sans débit avant la fin des 30 jours."
                       : `Essai déjà choisi sur ${trialLockedPlanLabel}. Tout changement de formule passe par le portail Stripe.`}
                   </p>

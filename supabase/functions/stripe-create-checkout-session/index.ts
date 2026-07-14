@@ -184,6 +184,7 @@ serve(async (req) => {
   }
 
   if (
+    existingAccount.stripe_customer_id &&
     existingAccount.stripe_subscription_id &&
     ["trial", "active", "past_due"].includes(existingAccount.subscription_status)
   ) {
@@ -250,7 +251,8 @@ serve(async (req) => {
   };
   const shouldStartTrial =
     existingAccount?.subscription_status === "trial" &&
-    !existingAccount?.trial_plan_locked &&
+    (!existingAccount?.trial_plan_locked || existingAccount.trial_plan_locked === planId) &&
+    !existingAccount?.stripe_customer_id &&
     !existingAccount?.stripe_subscription_id;
 
   const session = await stripe.checkout.sessions.create({
@@ -313,7 +315,7 @@ serve(async (req) => {
       billing_cycle: billingCycle,
       addon_ids: addons,
       stripe_customer_id: stripeCustomerId,
-      trial_plan_locked: existingAccount?.trial_plan_locked ?? null,
+      trial_plan_locked: existingAccount?.trial_plan_locked ?? (shouldStartTrial ? planId : null),
       subscription_status: nextSubscriptionStatus,
       updated_at: new Date().toISOString(),
     },
