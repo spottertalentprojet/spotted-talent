@@ -62,6 +62,100 @@ const getPortalConfigurationId = async (stripe: Stripe) => {
   return configuration.id;
 };
 
+const mapStripeStatusToBilling = (status?: string) => {
+  if (status === "trialing") return "trial";
+  if (status === "active") return "active";
+  if (status === "past_due" || status === "unpaid") return "past_due";
+  if (status === "canceled") return "canceled";
+  return "expired";
+};
+
+const escapeStripeSearchValue = (value: string) => value.replaceAll("\\", "\\\\").replaceAll("'", "\\'");
+
+const getCustomerIdIfUsable = async (stripe: Stripe, customerId?: string | null) => {
+  if (!customerId) return null;
+  try {
+    const customer = await stripe.customers.retrieve(customerId);
+    if ("deleted" in customer && customer.deleted) return null;
+    return customer.id;
+  } catch {
+    return null;
+  }
+};
+
+const findCustomerFromSubscription = async (stripe: Stripe, subscriptionId?: string | null) => {
+  if (!subscriptionId) return null;
+  try {
+    const subscription = await stripe.subscriptions.retrieve(subscriptionId);
+    const customerId = typeof subscription.customer === "string" ? subscription.customer : subscription.customer.id;
+    return {
+      customerId,
+      subscriptionId: subscription.id,
+      subscription,
+    };
+  } catch {
+    return null;
+  }
+};
+
+const findCustomerByUserId = async (stripe: Stripe, userId: string) => {
+  try {
+    const customers = await stripe.customers.search({
+      query: `metadata['user_id']:'${escapeStripeSearchValue(userId)}'`,
+      limit: 1,
+    });
+    const customer = customers.data[0];
+    if (!customer) return null;
+
+    const subscriptions = await stripe.subscriptions.list({
+      customer: customer.id,
+      status: "all",
+      limit: 10,
+    });
+    const subscription = subscriptions.data.find((item) =>
+      ["trialing", "active", "past_due", "unpaid"].includes(item.status),
+    ) || subscriptions.data[0] || null;
+
+    return {
+      customerId: customer.id,
+      subscriptionId: subscription?.id || null,
+      subscription,
+    };
+  } catch {
+    return null;
+  }
+};
+
+const findCustomerByEmail = async (stripe: Stripe, email?: string | null, userId?: string) => {
+  if (!email) return null;
+  try {
+    const customers = await stripe.customers.list({ email, limit: 10 });
+    for (const customer of customers.data) {
+      if ("deleted" in customer && customer.deleted) continue;
+
+      const subscriptions = await stripe.subscriptions.list({
+        customer: customer.id,
+        status: "all",
+        limit: 10,
+      });
+      const subscription = subscriptions.data.find((item) =>
+        ["trialing", "active", "past_due", "unpaid"].includes(item.status),
+      ) || subscriptions.data[0] || null;
+
+      if (customer.metadata?.user_id === userId || subscription?.metadata?.user_id === userId || subscription) {
+        return {
+          customerId: customer.id,
+          subscriptionId: subscription?.id || null,
+          subscription,
+        };
+      }
+    }
+  } catch {
+    return null;
+  }
+  return null;
+};
+
 serve(async (req) => {
   if (req.method === "OPTIONS") {
     return new Response("ok", { headers: corsHeaders });
@@ -96,13 +190,9 @@ serve(async (req) => {
   const supabaseAdmin = createClient(supabaseUrl, supabaseServiceRoleKey);
   const { data: account, error: accountError } = await supabaseAdmin
     .from("billing_accounts")
-    .select("stripe_customer_id")
+    .select("stripe_customer_id, stripe_subscription_id, billing_email")
     .eq("user_id", user.id)
     .maybeSingle();
-
-  if (accountError || !account?.stripe_customer_id) {
-    return jsonResponse(404, { error: "stripe_customer_not_found" });
-  }
 
   let body: { returnUrl?: string } = {};
   try {
@@ -121,9 +211,54 @@ serve(async (req) => {
   });
 
   try {
+    if (accountError) {
+      return jsonResponse(500, { error: "billing_account_lookup_failed" });
+    }
+
+    const subscriptionMatch = await findCustomerFromSubscription(stripe, account?.stripe_subscription_id);
+    const customerIdFromAccount = await getCustomerIdIfUsable(stripe, account?.stripe_customer_id);
+    const customerMatch = subscriptionMatch ||
+      (customerIdFromAccount
+        ? { customerId: customerIdFromAccount, subscriptionId: account?.stripe_subscription_id || null, subscription: null }
+        : null) ||
+      await findCustomerByUserId(stripe, user.id) ||
+      await findCustomerByEmail(stripe, account?.billing_email || user.email, user.id);
+
+    if (!customerMatch?.customerId) {
+      return jsonResponse(404, {
+        error: "stripe_customer_not_found",
+        message: "Aucun client Stripe n'est relié à ce compte. Relancez le paiement sécurisé pour recréer le lien Stripe.",
+      });
+    }
+
+    if (!account?.stripe_customer_id || account.stripe_customer_id !== customerMatch.customerId) {
+      const subscription = customerMatch.subscription;
+      await supabaseAdmin.from("billing_accounts").upsert(
+        {
+          user_id: user.id,
+          stripe_customer_id: customerMatch.customerId,
+          stripe_subscription_id: customerMatch.subscriptionId || account?.stripe_subscription_id || null,
+          ...(subscription
+            ? {
+                subscription_status: mapStripeStatusToBilling(subscription.status),
+                plan_id: subscription.metadata?.plan_id || undefined,
+                billing_cycle: subscription.metadata?.billing_cycle === "yearly" ? "yearly" : undefined,
+                trial_plan_locked: subscription.metadata?.plan_id || undefined,
+                trial_ends_at: subscription.trial_end ? new Date(subscription.trial_end * 1000).toISOString() : undefined,
+                current_period_end: subscription.current_period_end
+                  ? new Date(subscription.current_period_end * 1000).toISOString()
+                  : undefined,
+              }
+            : {}),
+          updated_at: new Date().toISOString(),
+        },
+        { onConflict: "user_id" },
+      );
+    }
+
     const configuration = await getPortalConfigurationId(stripe);
     const portalSession = await stripe.billingPortal.sessions.create({
-      customer: account.stripe_customer_id,
+      customer: customerMatch.customerId,
       return_url: returnUrl,
       configuration,
     });
