@@ -179,20 +179,17 @@ serve(async (req) => {
     return jsonResponse(500, { error: "billing_account_lookup_failed" });
   }
 
-  if (!existingAccount?.siret || !existingAccount.siret_verified_at) {
-    return jsonResponse(409, { error: "company_verification_required" });
-  }
-
   if (
-    existingAccount.stripe_customer_id &&
-    existingAccount.stripe_subscription_id &&
+    existingAccount?.stripe_customer_id &&
+    existingAccount?.stripe_subscription_id &&
     ["trial", "active", "past_due"].includes(existingAccount.subscription_status)
   ) {
     return jsonResponse(409, { error: "manage_existing_subscription_in_portal" });
   }
 
   const frenchVatRateId = await getOrCreateFrenchVatRate(stripe);
-  const invoiceCustomFields = buildInvoiceCustomFields(existingAccount.siret, billingProfile.vatNumber);
+  const verifiedSiret = existingAccount?.siret_verified_at ? existingAccount.siret : "";
+  const invoiceCustomFields = buildInvoiceCustomFields(verifiedSiret, billingProfile.vatNumber);
   const invoiceSettings = invoiceCustomFields.length > 0
     ? { custom_fields: invoiceCustomFields }
     : undefined;
@@ -205,7 +202,7 @@ serve(async (req) => {
       phone: billingProfile.phone || undefined,
       metadata: {
         user_id: user.id,
-        siret: existingAccount.siret,
+        siret: verifiedSiret,
       },
       address: billingProfile.addressLine1
         ? {
@@ -225,7 +222,7 @@ serve(async (req) => {
       phone: billingProfile.phone || undefined,
       metadata: {
         user_id: user.id,
-        siret: existingAccount.siret,
+        siret: verifiedSiret,
       },
       invoice_settings: invoiceSettings,
       address: billingProfile.addressLine1
@@ -247,10 +244,10 @@ serve(async (req) => {
     addon_ids: addons.join(","),
     billing_email: billingProfile.billingEmail || user.email || "",
     vat_number: billingProfile.vatNumber || "",
-    siret: existingAccount.siret,
+    siret: verifiedSiret,
   };
   const shouldStartTrial =
-    existingAccount?.subscription_status === "trial" &&
+    (existingAccount?.subscription_status || "trial") === "trial" &&
     (!existingAccount?.trial_plan_locked || existingAccount.trial_plan_locked === planId) &&
     !existingAccount?.stripe_customer_id &&
     !existingAccount?.stripe_subscription_id;

@@ -930,10 +930,6 @@ const AbonnementEntrepriseTab = ({
   }, [billingProfileDraft.siret, billingProfileDraft.siretVerifiedAt, verifyingSiret]);
 
   const enregistrerFacturation = () => {
-    if (!billingProfileDraft.siretVerifiedAt) {
-      toast.error("Vérifiez d'abord le SIRET de l'entreprise.");
-      return;
-    }
     if (!billingProfileDraft.legalName.trim()) {
       toast.error("Renseignez la raison sociale de l'entreprise.");
       return;
@@ -948,10 +944,6 @@ const AbonnementEntrepriseTab = ({
   };
 
   const demarrerCheckoutStripe = async (planId: BillingPlanId) => {
-    if (!billingProfileDraft.siretVerifiedAt || !/^\d{14}$/.test(billingProfileDraft.siret)) {
-      toast.error("Vérifiez le SIRET avant de choisir un abonnement.");
-      return;
-    }
     if (!billingProfileDraft.legalName.trim() || !billingProfileDraft.addressLine1.trim() || !billingProfileDraft.postalCode.trim() || !billingProfileDraft.city.trim()) {
       toast.error("Complétez le nom et l'adresse de l'entreprise avant le paiement.");
       return;
