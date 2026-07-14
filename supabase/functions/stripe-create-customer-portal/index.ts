@@ -17,23 +17,56 @@ const jsonResponse = (status: number, body: Record<string, unknown>) =>
     },
   });
 
-const getPortalConfigurationId = async (stripe: Stripe) => {
-  const configuredPortalId = Deno.env.get("STRIPE_PORTAL_CONFIGURATION_ID");
-  if (configuredPortalId) return configuredPortalId;
+const PORTAL_CONFIGURATION_NAME = "Spotted Talent - Portail client";
 
-  const configurations = await stripe.billingPortal.configurations.list({
-    active: true,
-    limit: 10,
-  });
+const PLAN_PRICE_KEYS = {
+  starter: ["STRIPE_PRICE_STARTER_MONTHLY", "STRIPE_PRICE_STARTER_YEARLY"],
+  boost: ["STRIPE_PRICE_BOOST_MONTHLY", "STRIPE_PRICE_BOOST_YEARLY"],
+  premium: ["STRIPE_PRICE_PREMIUM_MONTHLY", "STRIPE_PRICE_PREMIUM_YEARLY"],
+};
 
-  const defaultConfiguration = configurations.data.find((configuration) => configuration.is_default);
-  if (defaultConfiguration) return defaultConfiguration.id;
+const getConfiguredPlanPriceIds = () =>
+  Object.values(PLAN_PRICE_KEYS)
+    .flat()
+    .map((key) => Deno.env.get(key))
+    .filter((value): value is string => Boolean(value));
 
-  const existingConfiguration = configurations.data[0];
-  if (existingConfiguration) return existingConfiguration.id;
+const buildPortalProducts = async (stripe: Stripe) => {
+  const priceIds = getConfiguredPlanPriceIds();
+  const productsById = new Map<string, string[]>();
 
-  const configuration = await stripe.billingPortal.configurations.create({
-    name: "Spotted Talent - Portail client",
+  for (const priceId of priceIds) {
+    try {
+      const price = await stripe.prices.retrieve(priceId);
+      const productId = typeof price.product === "string" ? price.product : price.product.id;
+      const existingPrices = productsById.get(productId) || [];
+      productsById.set(productId, [...existingPrices, price.id]);
+    } catch (error) {
+      console.error("stripe_portal_price_lookup_failed", { priceId, error });
+    }
+  }
+
+  return [...productsById.entries()].map(([product, prices]) => ({
+    product,
+    prices,
+  }));
+};
+
+const buildPortalConfigurationParams = async (stripe: Stripe) => {
+  const products = await buildPortalProducts(stripe);
+  const subscriptionUpdate = products.length > 0
+    ? {
+        enabled: true,
+        default_allowed_updates: ["price"],
+        products,
+        proration_behavior: "none",
+      }
+    : {
+        enabled: false,
+      };
+
+  return {
+    name: PORTAL_CONFIGURATION_NAME,
     business_profile: {
       headline: "Gestion de votre abonnement Spotted Talent",
     },
@@ -53,11 +86,33 @@ const getPortalConfigurationId = async (stripe: Stripe) => {
         mode: "at_period_end",
         proration_behavior: "none",
       },
-      subscription_update: {
-        enabled: false,
-      },
+      subscription_update: subscriptionUpdate,
     },
+  };
+};
+
+const getPortalConfigurationId = async (stripe: Stripe) => {
+  const configurationParams = await buildPortalConfigurationParams(stripe);
+  const configuredPortalId = Deno.env.get("STRIPE_PORTAL_CONFIGURATION_ID");
+  if (configuredPortalId) {
+    await stripe.billingPortal.configurations.update(configuredPortalId, configurationParams);
+    return configuredPortalId;
+  }
+
+  const configurations = await stripe.billingPortal.configurations.list({
+    active: true,
+    limit: 100,
   });
+
+  const existingConfiguration = configurations.data.find((configuration) =>
+    configuration.name === PORTAL_CONFIGURATION_NAME,
+  );
+  if (existingConfiguration) {
+    await stripe.billingPortal.configurations.update(existingConfiguration.id, configurationParams);
+    return existingConfiguration.id;
+  }
+
+  const configuration = await stripe.billingPortal.configurations.create(configurationParams);
 
   return configuration.id;
 };
