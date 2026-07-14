@@ -835,18 +835,37 @@ const AbonnementEntrepriseTab = ({
     void saveEntrepriseBillingStateRemote(user.id, next);
   };
 
-  const readFunctionErrorCode = async (error: any, data: any) => {
-    if (typeof data?.error === "string") return data.error;
+  const readFunctionErrorPayload = async (error: any, data: any) => {
+    if (data && typeof data === "object") return data;
     const response = error?.context;
     if (response && typeof response.json === "function") {
       try {
-        const payload = await response.json();
-        if (typeof payload?.error === "string") return payload.error;
+        return await response.json();
       } catch {
         // The generic error message below remains the fallback.
       }
     }
+    return null;
+  };
+
+  const readFunctionErrorCode = async (error: any, data: any) => {
+    const payload = await readFunctionErrorPayload(error, data);
+    if (typeof payload?.error === "string") return payload.error;
     return typeof error?.message === "string" ? error.message : "unknown_error";
+  };
+
+  const readFunctionErrorMessage = async (error: any, data: any, fallback: string) => {
+    const payload = await readFunctionErrorPayload(error, data);
+    if (typeof payload?.message === "string" && payload.message.trim()) {
+      return payload.message;
+    }
+    if (typeof payload?.error === "string" && payload.error.trim()) {
+      return payload.error;
+    }
+    if (typeof error?.message === "string" && error.message.trim()) {
+      return error.message;
+    }
+    return fallback;
   };
 
   const verifierSiret = async (siretValue?: string) => {
@@ -983,7 +1002,7 @@ const AbonnementEntrepriseTab = ({
         },
       });
       if (error) {
-        throw error;
+        throw new Error(await readFunctionErrorMessage(error, data, "Portail Stripe indisponible pour le moment."));
       }
       if (!data?.url || typeof data.url !== "string") {
         throw new Error("portal_session_missing_url");
@@ -991,11 +1010,7 @@ const AbonnementEntrepriseTab = ({
       window.location.href = data.url;
     } catch (error: any) {
       console.error("stripe_portal_error", error);
-      const portalMessage =
-        error?.context?.message ||
-        error?.message ||
-        "Portail Stripe indisponible pour le moment.";
-      toast.error(portalMessage);
+      toast.error(error?.message || "Portail Stripe indisponible pour le moment.");
     } finally {
       setOpeningPortal(false);
     }
