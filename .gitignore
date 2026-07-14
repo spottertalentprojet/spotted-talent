@@ -24,6 +24,9 @@ dist-ssr
 *.sln
 *.sw?
 .vercel
+.vercel-cli-home
+.npm-cache
+supabase/.temp
 .env*.local
 
 .env

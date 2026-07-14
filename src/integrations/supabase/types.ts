@@ -99,6 +99,8 @@ export type Database = {
           id: string
           localisation: string | null
           permis_requis: string | null
+          priority_rank: number
+          questions_preselection: Json
           salaire_max: number | null
           salaire_min: number | null
           secteur: string | null
@@ -117,6 +119,8 @@ export type Database = {
           id?: string
           localisation?: string | null
           permis_requis?: string | null
+          priority_rank?: number
+          questions_preselection?: Json
           salaire_max?: number | null
           salaire_min?: number | null
           secteur?: string | null
@@ -135,6 +139,8 @@ export type Database = {
           id?: string
           localisation?: string | null
           permis_requis?: string | null
+          priority_rank?: number
+          questions_preselection?: Json
           salaire_max?: number | null
           salaire_min?: number | null
           secteur?: string | null
@@ -158,6 +164,7 @@ export type Database = {
           id: string
           note: number | null
           offre_id: string
+          reponses_preselection: Json
           statut: string | null
           talent_id: string
         }
@@ -166,6 +173,7 @@ export type Database = {
           id?: string
           note?: number | null
           offre_id: string
+          reponses_preselection?: Json
           statut?: string | null
           talent_id: string
         }
@@ -174,6 +182,7 @@ export type Database = {
           id?: string
           note?: number | null
           offre_id?: string
+          reponses_preselection?: Json
           statut?: string | null
           talent_id?: string
         }
@@ -279,12 +288,15 @@ export type Database = {
           billing_cycle: string
           billing_email: string | null
           city: string | null
+          company_phone: string | null
           country: string
           created_at: string
           current_period_end: string | null
           legal_name: string | null
           plan_id: string
           postal_code: string | null
+          siret: string | null
+          siret_verified_at: string | null
           stripe_customer_id: string | null
           stripe_subscription_id: string | null
           subscription_status: string
@@ -302,12 +314,15 @@ export type Database = {
           billing_cycle?: string
           billing_email?: string | null
           city?: string | null
+          company_phone?: string | null
           country?: string
           created_at?: string
           current_period_end?: string | null
           legal_name?: string | null
           plan_id?: string
           postal_code?: string | null
+          siret?: string | null
+          siret_verified_at?: string | null
           stripe_customer_id?: string | null
           stripe_subscription_id?: string | null
           subscription_status?: string
@@ -325,12 +340,15 @@ export type Database = {
           billing_cycle?: string
           billing_email?: string | null
           city?: string | null
+          company_phone?: string | null
           country?: string
           created_at?: string
           current_period_end?: string | null
           legal_name?: string | null
           plan_id?: string
           postal_code?: string | null
+          siret?: string | null
+          siret_verified_at?: string | null
           stripe_customer_id?: string | null
           stripe_subscription_id?: string | null
           subscription_status?: string
@@ -462,6 +480,7 @@ export type Database = {
       }
       messages: {
         Row: {
+          automated: boolean
           candidature_id: string
           contenu: string
           created_at: string
@@ -471,6 +490,7 @@ export type Database = {
           lu: boolean
         }
         Insert: {
+          automated?: boolean
           candidature_id: string
           contenu: string
           created_at?: string
@@ -480,6 +500,7 @@ export type Database = {
           lu?: boolean
         }
         Update: {
+          automated?: boolean
           candidature_id?: string
           contenu?: string
           created_at?: string

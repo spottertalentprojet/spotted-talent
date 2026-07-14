@@ -7,6 +7,14 @@ import { Input } from "@/components/ui/input";
 import { ArrowLeft, Building2, Hash, Lock, Mail, Sparkles } from "lucide-react";
 import { toast } from "sonner";
 
+const getAuthRedirectUrl = (path: string) => {
+  const isLocalhost = ["localhost", "127.0.0.1"].includes(window.location.hostname);
+  const baseUrl = isLocalhost
+    ? window.location.origin
+    : (import.meta.env.VITE_SITE_URL || "https://www.spottedtalent.fr");
+
+  return `${baseUrl.replace(/\/$/, "")}${path}`;
+};
 const GoogleLogo = () => (
   <svg viewBox="0 0 24 24" aria-hidden="true" className="h-4 w-4">
     <path d="M21.81 12.23c0-.72-.06-1.25-.19-1.81H12v3.44h5.65c-.11.86-.69 2.15-1.98 3.02l-.02.12 2.8 2.17.19.02c1.74-1.61 2.76-3.98 2.76-6.96Z" fill="#4285F4" />
@@ -65,7 +73,7 @@ const EntrepriseAuth = () => {
           password,
           options: {
             data: { role: "entreprise", full_name: companyName, siret },
-            emailRedirectTo: `${window.location.origin}/entreprise`,
+            emailRedirectTo: getAuthRedirectUrl("/entreprise"),
           },
         });
 
@@ -92,7 +100,7 @@ const EntrepriseAuth = () => {
 
     try {
       const { error } = await supabase.auth.resetPasswordForEmail(email, {
-        redirectTo: `${window.location.origin}/reset-password?role=entreprise`,
+        redirectTo: getAuthRedirectUrl("/reset-password?role=entreprise"),
       });
 
       if (error) throw error;
@@ -113,7 +121,7 @@ const EntrepriseAuth = () => {
       const { error } = await supabase.auth.signInWithOAuth({
         provider: "google",
         options: {
-          redirectTo: `${window.location.origin}/oauth-complete?role=entreprise`,
+          redirectTo: getAuthRedirectUrl("/oauth-complete?role=entreprise"),
           queryParams: {
             prompt: "select_account",
           },
@@ -162,7 +170,7 @@ const EntrepriseAuth = () => {
           </p>
           {!showForgotPassword && !isLogin && (
             <div className="mt-3 inline-block rounded-full border border-green-500/20 bg-green-500/10 px-4 py-2 text-xs font-medium text-green-400">
-              Essai gratuit de 30 jours - Sans carte bancaire
+              Essai gratuit de 30 jours - Carte bancaire requise
             </div>
           )}
         </div>

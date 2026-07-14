@@ -10,8 +10,11 @@ export type BillingCycle = "monthly" | "yearly";
 export type BillingSubscriptionStatus = "trial" | "active" | "expired" | "past_due" | "canceled";
 
 export type BillingProfile = {
+  siret: string;
+  siretVerifiedAt: string | null;
   legalName: string;
   billingEmail: string;
+  phone: string;
   vatNumber: string;
   addressLine1: string;
   addressLine2: string;
@@ -44,6 +47,17 @@ export type BillingPlan = {
   monthlyPriceCents: number;
   yearlyPriceCents: number;
   features: string[];
+};
+
+export type BillingPlanEntitlements = {
+  maxActiveOffers: number | null;
+  screeningQuestions: boolean;
+  automatedCandidateMessages: boolean;
+  urgentBadge: boolean;
+  priorityListings: boolean;
+  candidateMatching: boolean;
+  candidateExport: boolean;
+  prioritySupport: boolean;
 };
 
 export type BillingAddon = {
@@ -87,8 +101,11 @@ type BillingAccountInsert = TablesInsert<"billing_accounts">;
 type BillingInvoiceRow = Tables<"billing_invoices">;
 
 const DEFAULT_BILLING_PROFILE: BillingProfile = {
+  siret: "",
+  siretVerifiedAt: null,
   legalName: "",
   billingEmail: "",
+  phone: "",
   vatNumber: "",
   addressLine1: "",
   addressLine2: "",
@@ -118,9 +135,10 @@ export const ABONNEMENT_PLANS: BillingPlan[] = [
     monthlyPriceCents: 14900,
     yearlyPriceCents: 178800,
     features: [
+      "Tout Starter inclus",
       "Jusqu'à 5 annonces actives",
       "Questions de présélection",
-      "Messages automatiques",
+      "Notifications automatiques aux candidats",
       "Badge recrutement urgent",
     ],
   },
@@ -131,6 +149,8 @@ export const ABONNEMENT_PLANS: BillingPlan[] = [
     monthlyPriceCents: 34900,
     yearlyPriceCents: 418800,
     features: [
+      "Tout Starter et Boost inclus",
+      "Annonces actives illimitées (usage raisonnable)",
       "Annonces prioritaires",
       "Profils matchés mis en avant",
       "Export de candidats",
@@ -138,6 +158,39 @@ export const ABONNEMENT_PLANS: BillingPlan[] = [
     ],
   },
 ];
+
+export const BILLING_PLAN_ENTITLEMENTS: Record<BillingPlanId, BillingPlanEntitlements> = {
+  starter: {
+    maxActiveOffers: 1,
+    screeningQuestions: false,
+    automatedCandidateMessages: false,
+    urgentBadge: false,
+    priorityListings: false,
+    candidateMatching: false,
+    candidateExport: false,
+    prioritySupport: false,
+  },
+  boost: {
+    maxActiveOffers: 5,
+    screeningQuestions: true,
+    automatedCandidateMessages: true,
+    urgentBadge: true,
+    priorityListings: false,
+    candidateMatching: false,
+    candidateExport: false,
+    prioritySupport: false,
+  },
+  premium: {
+    maxActiveOffers: null,
+    screeningQuestions: true,
+    automatedCandidateMessages: true,
+    urgentBadge: true,
+    priorityListings: true,
+    candidateMatching: true,
+    candidateExport: true,
+    prioritySupport: true,
+  },
+};
 
 export const BILLING_ADDONS: BillingAddon[] = [
   {
@@ -244,8 +297,11 @@ const sanitizeBillingProfile = (value: unknown): BillingProfile => {
   if (!value || typeof value !== "object") return DEFAULT_BILLING_PROFILE;
   const source = value as Record<string, unknown>;
   return {
+    siret: typeof source.siret === "string" ? source.siret.replace(/\D/g, "").slice(0, 14) : "",
+    siretVerifiedAt: typeof source.siretVerifiedAt === "string" ? source.siretVerifiedAt : null,
     legalName: typeof source.legalName === "string" ? source.legalName : "",
     billingEmail: typeof source.billingEmail === "string" ? source.billingEmail : "",
+    phone: typeof source.phone === "string" ? source.phone : "",
     vatNumber: typeof source.vatNumber === "string" ? source.vatNumber : "",
     addressLine1: typeof source.addressLine1 === "string" ? source.addressLine1 : "",
     addressLine2: typeof source.addressLine2 === "string" ? source.addressLine2 : "",
@@ -256,8 +312,11 @@ const sanitizeBillingProfile = (value: unknown): BillingProfile => {
 };
 
 const mergeBillingProfiles = (primary: BillingProfile, secondary: BillingProfile): BillingProfile => ({
+  siret: primary.siret || secondary.siret,
+  siretVerifiedAt: primary.siretVerifiedAt || secondary.siretVerifiedAt,
   legalName: primary.legalName || secondary.legalName,
   billingEmail: primary.billingEmail || secondary.billingEmail,
+  phone: primary.phone || secondary.phone,
   vatNumber: primary.vatNumber || secondary.vatNumber,
   addressLine1: primary.addressLine1 || secondary.addressLine1,
   addressLine2: primary.addressLine2 || secondary.addressLine2,
@@ -318,8 +377,11 @@ const createRemoteBillingState = (
     updatedAt: typeof account.updated_at === "string" ? account.updated_at : nowIso(),
     stripeCustomerId: account.stripe_customer_id,
     billingProfile: {
+      siret: account.siret || "",
+      siretVerifiedAt: account.siret_verified_at || null,
       legalName: account.legal_name || "",
       billingEmail: account.billing_email || "",
+      phone: account.company_phone || "",
       vatNumber: account.vat_number || "",
       addressLine1: account.address_line1 || "",
       addressLine2: account.address_line2 || "",
@@ -438,6 +500,8 @@ export const mergeEntrepriseBillingStates = (
   const primary = shouldPreferRemote ? remoteState : localState;
   const secondary = shouldPreferRemote ? localState : remoteState;
 
+  const mergedBillingProfile = mergeBillingProfiles(primary.billingProfile, secondary.billingProfile);
+
   return {
     plan: primary.plan,
     trialPlanLocked: primary.trialPlanLocked || secondary.trialPlanLocked,
@@ -448,8 +512,15 @@ export const mergeEntrepriseBillingStates = (
     trialEndsAt: primary.trialEndsAt || secondary.trialEndsAt,
     updatedAt: primary.updatedAt || secondary.updatedAt || nowIso(),
     stripeCustomerId: primary.stripeCustomerId || secondary.stripeCustomerId,
-    billingProfile: mergeBillingProfiles(primary.billingProfile, secondary.billingProfile),
-    invoices: dedupeInvoices([...remoteState.invoices, ...localState.invoices]),
+    billingProfile: {
+      ...mergedBillingProfile,
+      // The verified company identity is always controlled by the database.
+      siret: remoteState.billingProfile.siret,
+      siretVerifiedAt: remoteState.billingProfile.siretVerifiedAt,
+    },
+    invoices: remoteState.stripeCustomerId
+      ? dedupeInvoices(remoteState.invoices)
+      : dedupeInvoices([...remoteState.invoices, ...localState.invoices]),
   };
 };
 
@@ -492,33 +563,31 @@ export const saveEntrepriseBillingStateRemote = async (
   state: EntrepriseBillingState,
 ): Promise<boolean> => {
   try {
-    const payload: BillingAccountInsert = {
-      user_id: userId,
+    const profilePayload: Partial<BillingAccountInsert> = {
       legal_name: state.billingProfile.legalName || null,
       billing_email: state.billingProfile.billingEmail || null,
+      company_phone: state.billingProfile.phone || null,
       vat_number: state.billingProfile.vatNumber || null,
       address_line1: state.billingProfile.addressLine1 || null,
       address_line2: state.billingProfile.addressLine2 || null,
       postal_code: state.billingProfile.postalCode || null,
       city: state.billingProfile.city || null,
       country: state.billingProfile.country || "France",
-      plan_id: state.plan,
-      billing_cycle: state.billingCycle,
-      addon_ids: state.selectedAddons,
-      subscription_status: state.subscriptionStatus,
-      trial_started_at: state.trialStartedAt,
-      trial_ends_at: state.trialEndsAt,
-      stripe_customer_id: state.stripeCustomerId,
-      updated_at: state.updatedAt,
     };
 
-    if (state.trialPlanLocked) {
-      payload.trial_plan_locked = state.trialPlanLocked;
-    }
+    const { data: updatedRows, error: updateError } = await supabase
+      .from("billing_accounts")
+      .update(profilePayload)
+      .eq("user_id", userId)
+      .select("user_id");
+    if (updateError) throw updateError;
 
-    const { error } = await supabase.from("billing_accounts").upsert(payload, { onConflict: "user_id" });
-    if (error) {
-      throw error;
+    if (!updatedRows || updatedRows.length === 0) {
+      const { error: insertError } = await supabase.from("billing_accounts").insert({
+        user_id: userId,
+        ...profilePayload,
+      } as BillingAccountInsert);
+      if (insertError) throw insertError;
     }
 
     return true;
@@ -534,12 +603,22 @@ export const isEntrepriseTabLockedByBilling = (
 ) => {
   if (!billingState) return false;
   if (billingState.subscriptionStatus === "active") return false;
-  if (billingState.subscriptionStatus === "trial") return false;
+  if (billingState.subscriptionStatus === "trial" && billingState.trialPlanLocked) return false;
   return !ENTREPRISE_TRIAL_ALLOWED_TABS.has(tabId);
 };
 
 export const getPlanById = (planId: BillingPlanId) =>
   ABONNEMENT_PLANS.find((plan) => plan.id === planId) || ABONNEMENT_PLANS[0];
+
+export const getEffectiveBillingPlanId = (billingState: EntrepriseBillingState): BillingPlanId => {
+  if (billingState.subscriptionStatus === "trial" && billingState.trialPlanLocked) {
+    return billingState.trialPlanLocked;
+  }
+  return billingState.plan;
+};
+
+export const getBillingPlanEntitlements = (planId: BillingPlanId) =>
+  BILLING_PLAN_ENTITLEMENTS[planId];
 
 export const getPlanPriceCents = (planId: BillingPlanId, cycle: BillingCycle) => {
   const plan = getPlanById(planId);

@@ -8,6 +8,7 @@ import { useEffect, useState, useRef } from "react";
 import { toast } from "sonner";
 import { supabase } from "@/integrations/supabase/client";
 import { emailNouvelleCandiature, emailNouveauMessage, emailNotificationEntreprise } from "@/lib/emails";
+import { requestAiContent } from "@/lib/aiAssistant";
 import { REQUESTABLE_DOCUMENTS, getRequestStatusMeta } from "@/lib/documentRequests";
 import {
   TALENT_AVAILABILITY_OPTIONS,
@@ -1041,9 +1042,13 @@ const ProfileTab = ({ profile, user, avatarUrl, setAvatarUrl }: any) => {
     if (!poste && !competences) return toast.error("Remplissez au moins le poste ou les compétences.");
     setGeneratingBio(true);
     try {
-      const response = await fetch("https://api.groq.com/openai/v1/chat/completions", { method: "POST", headers: { "Content-Type": "application/json", "Authorization": `Bearer ${import.meta.env.VITE_GROQ_API_KEY}` }, body: JSON.stringify({ model: "llama-3.3-70b-versatile", messages: [{ role: "system", content: "Tu es un expert RH. Redige une courte presentation professionnelle en 2-3 phrases maximum, a la premiere personne, en francais simple." }, { role: "user", content: `Redige une presentation pour: Prenom: ${prenom}, Poste: ${poste}, Secteur: ${secteur}, Competences: ${competences}, Localisation: ${localisation}` }], temperature: 0.7, max_tokens: 200 }) });
-      const data = await response.json();
-      setBio(data.choices[0].message.content);
+      const contenu = await requestAiContent("generate_bio", {
+        poste,
+        secteur,
+        competences,
+        localisation,
+      });
+      setBio(contenu);
       toast.success("Présentation générée !");
     } catch (err) { toast.error("Erreur lors de la génération."); } finally { setGeneratingBio(false); }
   };
@@ -1463,28 +1468,7 @@ const CVTab = ({ onScoreUpdate }: any) => {
     setLoading(true);
     try {
       const texte = await fichier.text();
-      const response = await fetch("https://api.groq.com/openai/v1/chat/completions", {
-        method: "POST",
-        headers: { "Content-Type": "application/json", "Authorization": `Bearer ${import.meta.env.VITE_GROQ_API_KEY}` },
-        body: JSON.stringify({
-          model: "llama-3.3-70b-versatile",
-          messages: [
-            {
-              role: "system",
-              content:
-                'Tu es un expert RH et coach CV. Reponds UNIQUEMENT en JSON valide avec cette structure: {"score_global":75,"niveau":"Prometteur","resume":"resume simple et pedagogique en 2 ou 3 phrases","lecture_recruteur":"ce qu un recruteur comprend en quelques secondes","categories":[{"nom":"Presentation","score":80,"explication":"explication simple"},{"nom":"Contenu","score":60,"explication":"explication simple"},{"nom":"Competences","score":55,"explication":"explication simple"},{"nom":"Impact recruteur","score":58,"explication":"explication simple"}],"points_forts":[{"titre":"titre court","detail":"explication concrete"}],"points_faibles":[{"titre":"titre court","detail":"explication concrete"}],"ameliorations_prioritaires":["action concrete 1","action concrete 2","action concrete 3"],"sections_manquantes":["section 1","section 2"],"mots_cles_a_ajouter":["mot 1","mot 2"],"exemples_amelioration":[],"conseil_debutant":"conseil rassurant et utile pour un candidat debutant"}. Les explications doivent etre simples, humaines, precises et actionnables. Les exemples doivent toujours rester lies au contenu reel du CV. Si tu n as pas d exemple fiable et concret, renvoie un tableau vide.',
-            },
-            {
-              role: "user",
-              content: `Analyse ce CV et explique clairement ce qui est bien, ce qui est faible et ce qu il faut ameliorer en priorite: ${texte.slice(0, 5000)}`,
-            },
-          ],
-          temperature: 0.3,
-          max_tokens: 1600,
-        }),
-      });
-      const data = await response.json();
-      const contenu = data?.choices?.[0]?.message?.content || "";
+      const contenu = await requestAiContent("analyze_cv", { cvText: texte });
       const jsonMatch = contenu.match(/\{[\s\S]*\}/);
       if (!jsonMatch) throw new Error("Reponse IA invalide");
       const result = normalizeCvAnalysis(JSON.parse(jsonMatch[0]));
@@ -1800,6 +1784,8 @@ const OffresTab = ({ user }: any) => {
   const [postulant, setPostulant] = useState(false);
   const [offreOuverte, setOffreOuverte] = useState<string | null>(null);
   const [profilTalent, setProfilTalent] = useState<any>(null);
+  const [applicationOffer, setApplicationOffer] = useState<any | null>(null);
+  const [screeningAnswers, setScreeningAnswers] = useState<Record<string, string>>({});
   const contrats = ["Tous", "CDI", "CDI Cadre", "CDD", "CDD - Court terme (jusqu'à 3 mois)", "CDD - Court terme (jusqu'à 6 mois)", "CDD Renouvelable", "Intérim", "Freelance", "Stage", "Alternance", "Contrat de professionnalisation", "Contrat étudiant", "Service civique", "Intermittent"];
   const diplomes = ["Tous", "Sans diplôme", "CAP", "BEP", "Bac Pro", "BTS", "Licence", "Master", "Doctorat"];
 
@@ -1811,6 +1797,7 @@ const OffresTab = ({ user }: any) => {
       .select("*")
       .eq("statut", "active")
       .not("entreprise_id", "is", null)
+      .order("priority_rank", { ascending: false })
       .order("created_at", { ascending: false });
     setOffres(data || []);
     setLoading(false);
@@ -1828,7 +1815,7 @@ const OffresTab = ({ user }: any) => {
     setFiltreSalaireMax("");
   };
 
-  const postuler = async (offreId: string) => {
+  const postuler = async (offreId: string, responses: Array<{ questionId: string; question: string; answer: string }> = []) => {
     if (postulant) return;
     setPostulant(true);
     const { data: { user: currentUser } } = await supabase.auth.getUser();
@@ -1836,21 +1823,54 @@ const OffresTab = ({ user }: any) => {
       setPostulant(false);
       return toast.error("Connectez-vous pour postuler.");
     }
-    const { error } = await supabase.from("candidatures").insert({ offre_id: offreId, talent_id: currentUser.id, statut: "envoyee" });
+    const { data: candidatureData, error } = await supabase.from("candidatures").insert({
+      offre_id: offreId,
+      talent_id: currentUser.id,
+      statut: "envoyee",
+      reponses_preselection: responses,
+    }).select("id").single();
     if (error) {
       setPostulant(false);
       if (error.code === "23505") return toast.error("Vous avez déjà postulé à cette offre.");
       return toast.error("Une erreur est survenue pendant la candidature.");
     }
     setCandidatures(prev => [...prev, offreId]);
+    setApplicationOffer(null);
+    setScreeningAnswers({});
     toast.success("Candidature envoyée.");
     try {
       const { data: offreData } = await supabase.from("offres").select("titre, entreprise_id").eq("id", offreId).single();
-      if (offreData) {
-        if (currentUser.email) await emailNouvelleCandiature(currentUser.email, offreData.titre);
-        if (offreData.entreprise_id) { const { data: ep } = await supabase.from("profiles").select("email").eq("user_id", offreData.entreprise_id).single(); if (ep?.email) await emailNotificationEntreprise(ep.email, offreData.titre); }
+      if (offreData && candidatureData?.id) {
+        if (currentUser.email) await emailNouvelleCandiature(currentUser.email, candidatureData.id);
+        if (offreData.entreprise_id) { const { data: ep } = await supabase.from("profiles").select("email").eq("user_id", offreData.entreprise_id).single(); if (ep?.email) await emailNotificationEntreprise(ep.email, candidatureData.id); }
       }
     } catch (err) { console.error("Erreur email:", err); } finally { setPostulant(false); }
+  };
+
+  const commencerCandidature = (offre: any) => {
+    const questions = Array.isArray(offre.questions_preselection) ? offre.questions_preselection : [];
+    if (questions.length === 0) {
+      void postuler(offre.id);
+      return;
+    }
+    setApplicationOffer(offre);
+    setScreeningAnswers({});
+  };
+
+  const envoyerCandidatureAvecReponses = () => {
+    if (!applicationOffer) return;
+    const questions = Array.isArray(applicationOffer.questions_preselection) ? applicationOffer.questions_preselection : [];
+    const missingRequired = questions.some((question: any) => question.required && !String(screeningAnswers[question.id] || "").trim());
+    if (missingRequired) {
+      toast.error("Répondez à toutes les questions obligatoires.");
+      return;
+    }
+    const responses = questions.map((question: any) => ({
+      questionId: question.id,
+      question: question.label,
+      answer: String(screeningAnswers[question.id] || "").trim(),
+    }));
+    void postuler(applicationOffer.id, responses);
   };
 
   const salaireMinRecherche = filtreSalaireMin ? Number(filtreSalaireMin) : null;
@@ -1947,7 +1967,7 @@ const OffresTab = ({ user }: any) => {
       );
     })
     .map(o => ({ ...o, _score: calculerScore(o, profilTalent) }))
-    .sort((a, b) => b._score - a._score);
+    .sort((a, b) => (b.priority_rank || 0) - (a.priority_rank || 0) || b._score - a._score);
 
   // Compteurs bandeaux info
   const il7Jours = new Date(); il7Jours.setDate(il7Jours.getDate() - 7);
@@ -1961,6 +1981,51 @@ const OffresTab = ({ user }: any) => {
 
   return (
     <div className="space-y-6">
+      {applicationOffer && (
+        <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/65 p-4" role="dialog" aria-modal="true" aria-labelledby="screening-title">
+          <div className="max-h-[90vh] w-full max-w-2xl overflow-y-auto rounded-2xl border border-border bg-card p-5 shadow-2xl sm:p-6">
+            <div className="flex items-start justify-between gap-4">
+              <div>
+                <p className="text-xs font-semibold uppercase tracking-[0.2em] text-primary">Avant d'envoyer votre candidature</p>
+                <h3 id="screening-title" className="mt-2 text-xl font-bold">Questions pour {applicationOffer.titre}</h3>
+                <p className="mt-2 text-sm text-muted-foreground">Vos réponses seront transmises uniquement à l'entreprise concernée.</p>
+              </div>
+              <button
+                type="button"
+                onClick={() => { setApplicationOffer(null); setScreeningAnswers({}); }}
+                className="inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-xl border border-border text-muted-foreground hover:text-foreground"
+                aria-label="Fermer"
+              >
+                <X className="h-4 w-4" />
+              </button>
+            </div>
+            <div className="mt-6 space-y-4">
+              {(applicationOffer.questions_preselection || []).map((question: any, index: number) => (
+                <div key={question.id}>
+                  <label className="mb-2 block text-sm font-medium text-foreground" htmlFor={`screening-${question.id}`}>
+                    {index + 1}. {question.label} {question.required && <span className="text-red-400">*</span>}
+                  </label>
+                  <textarea
+                    id={`screening-${question.id}`}
+                    rows={3}
+                    maxLength={1000}
+                    value={screeningAnswers[question.id] || ""}
+                    onChange={(event) => setScreeningAnswers((current) => ({ ...current, [question.id]: event.target.value }))}
+                    className="w-full resize-none rounded-xl border border-border bg-secondary/40 px-4 py-3 text-sm focus:border-primary/50 focus:outline-none"
+                    placeholder="Votre réponse..."
+                  />
+                </div>
+              ))}
+            </div>
+            <div className="mt-6 flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">
+              <Button type="button" variant="ghost-glow" onClick={() => { setApplicationOffer(null); setScreeningAnswers({}); }}>Annuler</Button>
+              <Button type="button" variant="glow" disabled={postulant} onClick={envoyerCandidatureAvecReponses}>
+                {postulant ? "Envoi..." : "Envoyer ma candidature"}
+              </Button>
+            </div>
+          </div>
+        </div>
+      )}
       <div className="dashboard-hero-card relative overflow-hidden">
         <div className="absolute -left-16 top-6 h-40 w-40 rounded-full bg-primary/12 blur-3xl" />
         <div className="absolute bottom-0 right-0 h-36 w-36 rounded-full bg-accent/12 blur-3xl" />
@@ -2301,7 +2366,7 @@ const OffresTab = ({ user }: any) => {
                       </div>
 
                       <div className="space-y-2">
-                        <Button className="w-full h-11" variant={isApplied ? "ghost-glow" : "glow"} size="sm" disabled={isApplied || postulant} onClick={() => postuler(offre.id)}>
+                        <Button className="w-full h-11" variant={isApplied ? "ghost-glow" : "glow"} size="sm" disabled={isApplied || postulant} onClick={() => commencerCandidature(offre)}>
                           {isApplied ? "Déjà postulé" : "Postuler"}
                         </Button>
                         <Button variant="ghost-glow" size="sm" className="w-full h-11" onClick={() => setOffreOuverte(offreOuverte === offre.id ? null : offre.id)}>
@@ -2785,7 +2850,20 @@ const MessagerieTab = ({ user }: any) => {
     const { data: offre } = await supabase.from("offres").select("entreprise_id").eq("id", convActive.offre_id).single();
     if (!offre) return;
     const { error } = await supabase.from("messages").insert({ expedition_id: user.id, destinataire_id: offre.entreprise_id, candidature_id: convActive.id, contenu: nouveau.trim() });
-    if (!error) { setNouveau(""); chargerMessages(convActive.id); try { await emailNouveauMessage(user.email || "", "Un talent"); } catch (err) { console.error(err); } }
+    if (!error) {
+      setNouveau("");
+      chargerMessages(convActive.id);
+      try {
+        const { data: entrepriseProfile } = await supabase
+          .from("profiles")
+          .select("email")
+          .eq("user_id", offre.entreprise_id)
+          .maybeSingle();
+        if (entrepriseProfile?.email) await emailNouveauMessage(entrepriseProfile.email, convActive.id);
+      } catch (err) {
+        console.error("Erreur email message:", err);
+      }
+    }
   };
 
   if (loading) return <div className="text-muted-foreground">Chargement...</div>;
@@ -2933,6 +3011,7 @@ const MessagerieTab = ({ user }: any) => {
                   messages.map((m) => (
                     <div key={m.id} className={`flex ${m.expedition_id === user.id ? "justify-end" : "justify-start"}`}>
                       <div className={`max-w-[85%] rounded-2xl px-4 py-3 text-sm sm:max-w-sm ${m.expedition_id === user.id ? "bg-primary text-white shadow-[0_18px_45px_-36px_rgba(59,130,246,0.65)]" : "bg-secondary/60 border border-border/50"}`}>
+                        {m.automated && <p className="mb-1 text-[10px] font-semibold uppercase tracking-wide opacity-70">Message automatique</p>}
                         <p>{m.contenu}</p>
                         <p className="mt-1 text-[11px] opacity-70">{new Date(m.created_at).toLocaleTimeString("fr-FR", { hour: "2-digit", minute: "2-digit" })}</p>
                       </div>
@@ -3610,55 +3689,20 @@ const LettreTab = () => {
     if (!poste || !entreprise) return toast.error("Remplissez le poste et l'entreprise.");
     setLoading(true);
     try {
-      const styleInstruction =
-        styleLettre === "terrain"
-          ? "Adopte un ton plus direct, concret et terrain. Utilise des phrases plus courtes, valorise la reactivite, la ponctualite, la fiabilite, l envie de travailler et l adaptation rapide aux missions. Garde un rendu professionnel, jamais familier."
-          : "Adopte un ton plus classique et professionnel. Utilise une structure sobre, rassurante et bien articulee, adaptee a une candidature traditionnelle.";
-      const response = await fetch("https://api.groq.com/openai/v1/chat/completions", {
-        method: "POST",
-        headers: { "Content-Type": "application/json", "Authorization": `Bearer ${import.meta.env.VITE_GROQ_API_KEY}` },
-        body: JSON.stringify({
-          model: "llama-3.3-70b-versatile",
-          messages: [
-            {
-              role: "system",
-              content:
-                "Tu es un expert RH francophone. Tu rediges des lettres de motivation naturelles, credibles et professionnelles. Tu bannis les formulations trop scolaires, les phrases creuses, les compliments exageres et les tournures artificielles d'IA. Tu n'inventes jamais des annees d'experience, des diplomes ou des missions non fournies. Tu fournis uniquement la lettre finale, sans markdown, sans titre supplementaire et sans commentaire.",
-            },
-            {
-              role: "user",
-              content:
-                `Redige une lettre de motivation professionnelle pour une candidature.\n` +
-                `Candidat : ${nomCandidat || "Candidat"}\n` +
-                `Poste vise : ${poste}\n` +
-                `Entreprise : ${entreprise}\n` +
-                `Poste actuel ou metier du candidat : ${posteCandidat || "Non precise"}\n` +
-                `Localisation : ${localisationCandidat || "Non precise"}\n` +
-                `Secteur du candidat : ${secteurCandidat || "Non precise"}\n` +
-                `Contrat recherche : ${contratRecherche || "Non precise"}\n` +
-                `Competences du candidat : ${competencesCandidat || "Non precise"}\n` +
-                `Presentation courte du candidat : ${bioCandidat || "Non precise"}\n` +
-                `Points forts a valoriser : ${points || "motivation, serieux, envie de bien faire"}\n` +
-                `Style souhaite : ${styleLettre === "terrain" ? "Terrain / interim" : "Classique professionnel"}\n\n` +
-                `Contraintes :\n` +
-                `- 190 a 260 mots maximum\n` +
-                `- style professionnel, humain et concret\n` +
-                `- 4 paragraphes maximum\n` +
-                `- commencer directement par 'Madame, Monsieur,' sans afficher d'objet dans le texte\n` +
-                `- montrer une motivation realiste pour le poste et l'entreprise\n` +
-                `- expliquer ce que le candidat peut apporter au poste avec des arguments concrets\n` +
-                `- rester sobre, credible et directement exploitable pour une vraie candidature\n` +
-                `- terminer par une formule de politesse simple et une signature avec le nom du candidat\n` +
-                `- ne jamais ecrire [Votre nom] ou un autre placeholder\n` +
-                `- ${styleInstruction}`,
-            },
-          ],
-          temperature: 0.35,
-          max_tokens: 700,
-        }),
+      const contenu = await requestAiContent("cover_letter", {
+        nomCandidat,
+        poste,
+        entreprise,
+        posteCandidat,
+        localisation: localisationCandidat,
+        secteur: secteurCandidat,
+        contrat: contratRecherche,
+        competences: competencesCandidat,
+        bio: bioCandidat,
+        pointsForts: points,
+        style: styleLettre,
       });
-      const data = await response.json();
-      setLettre(nettoyerLettre(data?.choices?.[0]?.message?.content || ""));
+      setLettre(nettoyerLettre(contenu));
       toast.success("Lettre générée !");
     } catch (err) { toast.error("Impossible de générer la lettre pour le moment."); } finally { setLoading(false); }
   };

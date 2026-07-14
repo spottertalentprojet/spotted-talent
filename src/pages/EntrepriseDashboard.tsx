@@ -1,13 +1,14 @@
-import { envoyerEmail, emailCandidatureStatut } from "@/lib/emails";
+import { emailCandidatureStatut, emailNouveauMessage, emailOffrePubliee } from "@/lib/emails";
 import { useAuth } from "@/contexts/AuthContext";
 import { useNavigate } from "react-router-dom";
 import { Button } from "@/components/ui/button";
 import ConfirmActionDialog from "@/components/ConfirmActionDialog";
-import { Sparkles, Wand2, Users, BarChart3, LogOut, Building2, Plus, FileText, Camera, Trash2, CheckCircle, Eye, EyeOff, Send, MessageSquare, ChevronDown, Search, MapPin, Euro, GraduationCap, Calendar, Briefcase, Wrench, Mail, Check, X, Pencil, Menu, ArrowLeft, CreditCard } from "lucide-react";
+import { Sparkles, Wand2, Users, BarChart3, LogOut, Building2, Plus, FileText, Camera, Trash2, CheckCircle, Eye, EyeOff, Send, MessageSquare, ChevronDown, Search, MapPin, Euro, GraduationCap, Calendar, Briefcase, Wrench, Mail, Check, X, Pencil, Menu, ArrowLeft, CreditCard, Lock, Download } from "lucide-react";
 import { useEffect, useMemo, useState, useRef } from "react";
 import { toast } from "sonner";
 import { supabase } from "@/integrations/supabase/client";
 import { emailNouvelleOffreTalent } from "@/lib/emails";
+import { requestAiContent } from "@/lib/aiAssistant";
 import { REQUESTABLE_DOCUMENTS, getRequestStatusMeta } from "@/lib/documentRequests";
 import {
   formatTalentAvailabilityLabel,
@@ -22,17 +23,17 @@ import {
   BillingCycle,
   BillingInvoice,
   BillingPlanId,
+  BillingPlanEntitlements,
   BillingProfile,
   EntrepriseBillingState,
   computeBillingTotals,
-  createPaidInvoice,
   formatEuroFromCents,
   getAddonById,
   getAddonPriceCents,
+  getBillingPlanEntitlements,
+  getEffectiveBillingPlanId,
   getPlanById,
   getPlanPriceCents,
-  getPlanYearlyReferenceCents,
-  getPlanYearlySavingsCents,
   getYearlyEquivalentMonthlyCents,
   isEntrepriseTabLockedByBilling,
   mergeEntrepriseBillingStates,
@@ -391,6 +392,8 @@ const EntrepriseDashboard = () => {
   const [billingState, setBillingState] = useState<EntrepriseBillingState | null>(null);
   const candidaturesRecuesSignalKey = user ? `spotted-talent:entreprise-candidatures:${user.id}` : "";
   const activeTabLabel = tabs.find((tab) => tab.id === activeTab)?.label || "Dashboard";
+  const effectivePlanId = billingState ? getEffectiveBillingPlanId(billingState) : "starter";
+  const planEntitlements = getBillingPlanEntitlements(effectivePlanId);
 
   useEffect(() => { if (!loading && !user) navigate("/entreprise"); }, [loading, user, navigate]);
 
@@ -419,49 +422,64 @@ const EntrepriseDashboard = () => {
     if (!billingState) return;
     if (isEntrepriseTabLockedByBilling(activeTab, billingState)) {
       setActiveTab("abonnement");
-      toast.error("Votre essai gratuit de 30 jours est terminé. Activez un plan pour débloquer cette rubrique.");
+      toast.error(
+        billingState.subscriptionStatus === "trial" && !billingState.trialPlanLocked
+          ? "Enregistrez votre carte pour activer les 30 jours d'essai."
+          : "Votre essai gratuit de 30 jours est terminé. Activez un plan pour débloquer cette rubrique.",
+      );
     }
   }, [activeTab, billingState]);
 
   useEffect(() => {
-    if (!user || !billingState) return;
+    if (!user) return;
 
     const url = new URL(window.location.href);
     const status = url.searchParams.get("billing_status");
     if (!status) return;
-
-    if (status === "success") {
-      const planParam = url.searchParams.get("plan");
-      const cycleParam = url.searchParams.get("cycle");
-      const nextPlan: BillingPlanId =
-        planParam === "boost" || planParam === "premium" || planParam === "starter"
-          ? planParam
-          : billingState.plan;
-      const nextCycle: BillingCycle = cycleParam === "yearly" ? "yearly" : "monthly";
-      const invoice = createPaidInvoice(nextPlan, nextCycle, billingState.selectedAddons);
-      const nextState: EntrepriseBillingState = {
-        ...billingState,
-        plan: nextPlan,
-        trialPlanLocked: billingState.trialPlanLocked,
-        billingCycle: nextCycle,
-        subscriptionStatus: "active",
-        invoices: [invoice, ...billingState.invoices].slice(0, 20),
-        updatedAt: new Date().toISOString(),
-      };
-      setBillingState(nextState);
-      saveEntrepriseBillingState(user.id, nextState);
-      void saveEntrepriseBillingStateRemote(user.id, nextState);
-      toast.success("Paiement validé. Votre abonnement entreprise est actif.");
-    } else if (status === "cancel") {
-      toast.message("Paiement annulé. Aucun prélèvement n'a été effectué.");
-    }
 
     url.searchParams.delete("billing_status");
     url.searchParams.delete("plan");
     url.searchParams.delete("cycle");
     const query = url.searchParams.toString();
     window.history.replaceState({}, "", `${url.pathname}${query ? `?${query}` : ""}`);
-  }, [user, billingState]);
+
+    if (status === "cancel") {
+      toast.message("Paiement annulé. Aucun prélèvement n'a été effectué.");
+      return;
+    }
+
+    if (status !== "success") return;
+
+    let cancelled = false;
+    toast.success("Carte enregistrée. Nous confirmons votre abonnement avec Stripe.");
+
+    void (async () => {
+      for (let attempt = 0; attempt < 6; attempt += 1) {
+        if (attempt > 0) {
+          await new Promise((resolve) => window.setTimeout(resolve, 1000));
+        }
+        const remoteState = await fetchEntrepriseBillingStateRemote(user.id);
+        if (cancelled || !remoteState) continue;
+
+        const stripeConfirmed =
+          remoteState.subscriptionStatus !== "trial" || Boolean(remoteState.trialPlanLocked);
+        if (!stripeConfirmed && attempt < 5) continue;
+
+        const localState = loadEntrepriseBillingState(user.id);
+        const mergedState = mergeEntrepriseBillingStates(localState, remoteState);
+        setBillingState(mergedState);
+        saveEntrepriseBillingState(user.id, mergedState);
+        if (stripeConfirmed) {
+          toast.success("Abonnement confirmé. Un e-mail récapitulatif vous a été envoyé.");
+        }
+        return;
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [user]);
 
   useEffect(() => {
     if (user) {
@@ -530,18 +548,30 @@ const EntrepriseDashboard = () => {
   if (user && !billingState) return (<div className="min-h-screen bg-background flex items-center justify-center text-muted-foreground">Chargement...</div>);
 
   const candidatureIdFromUrl = params.get("candidature");
+  const billingTrialDaysLeft = billingState
+    ? Math.max(0, Math.ceil((new Date(billingState.trialEndsAt).getTime() - Date.now()) / (1000 * 60 * 60 * 24)))
+    : 0;
+  const billingNeedsCheckout = billingState?.subscriptionStatus === "trial" && !billingState.trialPlanLocked;
+  const billingTrialEndingSoon =
+    billingState?.subscriptionStatus === "trial" && Boolean(billingState.trialPlanLocked) && billingTrialDaysLeft <= 7;
   const billingBannerClass =
-    billingState?.subscriptionStatus === "expired" || billingState?.subscriptionStatus === "canceled"
-      ? "border-red-500/30 bg-red-500/10 text-red-200"
-      : billingState?.subscriptionStatus === "past_due"
-        ? "border-orange-500/30 bg-orange-500/10 text-orange-100"
-        : "border-amber-500/30 bg-amber-500/10 text-amber-100";
+    billingState?.subscriptionStatus === "expired" ||
+    billingState?.subscriptionStatus === "canceled" ||
+    billingState?.subscriptionStatus === "past_due"
+      ? "border-red-500/35 bg-red-500/10 text-red-700 dark:text-red-200"
+      : billingTrialEndingSoon
+        ? "border-orange-500/35 bg-orange-500/10 text-orange-700 dark:text-orange-100"
+        : "border-zinc-900/25 bg-zinc-950/[0.04] text-zinc-950 dark:border-zinc-100/20 dark:text-zinc-100";
   const billingBannerText =
     billingState?.subscriptionStatus === "expired" || billingState?.subscriptionStatus === "canceled"
       ? "Votre essai gratuit de 30 jours est expiré. Activez un plan dans l'onglet Abonnement pour débloquer les rubriques métier."
       : billingState?.subscriptionStatus === "past_due"
         ? "Un paiement est en attente. Mettez à jour votre moyen de paiement pour garder toutes les rubriques actives."
-        : "Essai gratuit actif : vous pouvez tester la plateforme pendant 30 jours avant activation d'un abonnement.";
+        : billingNeedsCheckout
+          ? "Votre essai n'est pas encore activé. Choisissez une formule et enregistrez votre carte avec Stripe pour démarrer les 30 jours."
+          : billingTrialEndingSoon
+            ? `Votre essai expire bientôt : il reste ${billingTrialDaysLeft} jour(s) avant le premier paiement.`
+            : "Essai gratuit actif : votre carte est enregistrée et aucun débit n'aura lieu avant la fin des 30 jours.";
 
   return (
     <div className="dashboard-shell min-h-screen lg:flex">
@@ -600,7 +630,9 @@ const EntrepriseDashboard = () => {
                 if (tabLocked) {
                   setActiveTab("abonnement");
                   setMobileNavOpen(false);
-                  toast.error("Essai gratuit expiré. Activez un plan pour accéder à cette section.");
+                  toast.error(billingNeedsCheckout
+                    ? "Enregistrez votre carte pour activer les 30 jours d'essai."
+                    : "Essai gratuit expiré. Activez un plan pour accéder à cette section.");
                   return;
                 }
                 setActiveTab(id);
@@ -609,7 +641,7 @@ const EntrepriseDashboard = () => {
                 if (id === "candidats") void marquerCandidaturesRecuesCommeVues();
               }}
               className={`dashboard-nav-item ${activeTab === id ? "dashboard-nav-item-accent-active" : ""} ${tabLocked ? "cursor-not-allowed opacity-55" : ""}`}
-              title={tabLocked ? "Essai expiré - activez un plan" : undefined}
+              title={tabLocked ? (billingNeedsCheckout ? "Carte requise pour activer l'essai" : "Essai expiré - activez un plan") : undefined}
             >
               <Icon className="w-4 h-4" />
               <span className="flex-1 text-left">{label}</span>
@@ -644,8 +676,8 @@ const EntrepriseDashboard = () => {
         </div>
         {activeTab === "dashboard" && <DashboardHome profile={profile} nbOffres={nbOffres} nbCandidatures={nbCandidatures} user={user} onNavigate={setActiveTab} />}
         {activeTab === "profil" && <ProfilEntrepriseTab profile={profile} user={user} avatarUrl={avatarUrl} setAvatarUrl={setAvatarUrl} />}
-        {activeTab === "offres" && <OffresTab user={user} onOffrePubliee={() => { setNbOffres(n => n + 1); setOffresRefreshToken((token) => token + 1); setActiveTab("mes-offres"); }} />}
-        {activeTab === "mes-offres" && <MesOffresTab user={user} refreshToken={offresRefreshToken} onOffresChanged={setNbOffres} />}
+        {activeTab === "offres" && <OffresTab user={user} planId={effectivePlanId} entitlements={planEntitlements} onOffrePubliee={() => { setNbOffres(n => n + 1); setOffresRefreshToken((token) => token + 1); setActiveTab("mes-offres"); }} />}
+        {activeTab === "mes-offres" && <MesOffresTab user={user} planId={effectivePlanId} entitlements={planEntitlements} refreshToken={offresRefreshToken} onOffresChanged={setNbOffres} />}
         {activeTab === "abonnement" && user && billingState && (
           <AbonnementEntrepriseTab
             user={user}
@@ -653,7 +685,7 @@ const EntrepriseDashboard = () => {
             onBillingChange={setBillingState}
           />
         )}
-        {activeTab === "candidats" && <CandidatsTab user={user} />}
+        {activeTab === "candidats" && <CandidatsTab user={user} planId={effectivePlanId} entitlements={planEntitlements} />}
         {activeTab === "messagerie" && <MessagerieTab user={user} candidatureIdFromUrl={candidatureIdFromUrl} />}
         {activeTab === "documents" && <DocumentsEntrepriseTab />}
       </main>
@@ -676,6 +708,9 @@ const AbonnementEntrepriseTab = ({
   const [billingProfileDraft, setBillingProfileDraft] = useState<BillingProfile>(billingState.billingProfile);
   const [checkoutPlanId, setCheckoutPlanId] = useState<BillingPlanId | null>(null);
   const [openingPortal, setOpeningPortal] = useState(false);
+  const [verifyingSiret, setVerifyingSiret] = useState(false);
+  const lastAutomaticSiretAttempt = useRef("");
+  const lastAutomaticBillingSyncKey = useRef("");
 
   useEffect(() => {
     setSelectedPlanId(billingState.plan);
@@ -689,18 +724,52 @@ const AbonnementEntrepriseTab = ({
     billingState.billingProfile,
   ]);
 
+  useEffect(() => {
+    if (!billingState.stripeCustomerId || !billingState.trialPlanLocked) return;
+
+    const syncKey = [
+      billingState.stripeCustomerId,
+      billingProfileDraft.siretVerifiedAt || "unverified",
+      billingProfileDraft.vatNumber || "no-vat-number",
+    ].join(":");
+    if (lastAutomaticBillingSyncKey.current === syncKey) return;
+
+    lastAutomaticBillingSyncKey.current = syncKey;
+    void (async () => {
+      const { error } = await supabase.functions.invoke("stripe-sync-billing", { body: {} });
+      if (error) {
+        console.error("stripe_billing_sync_error", error);
+        return;
+      }
+
+      const remoteState = await fetchEntrepriseBillingStateRemote(user.id);
+      if (!remoteState) return;
+      const mergedState = mergeEntrepriseBillingStates(billingState, remoteState);
+      onBillingChange(mergedState);
+      saveEntrepriseBillingState(user.id, mergedState);
+    })();
+  }, [
+    billingState.stripeCustomerId,
+    billingState.trialPlanLocked,
+    billingProfileDraft.siretVerifiedAt,
+    billingProfileDraft.vatNumber,
+  ]);
+
   const planEnCours = getPlanById(billingState.plan);
   const trialEndsAtDate = new Date(billingState.trialEndsAt);
   const trialDaysLeft = Math.max(0, Math.ceil((trialEndsAtDate.getTime() - Date.now()) / (1000 * 60 * 60 * 24)));
   const isTrialExpired = billingState.subscriptionStatus === "expired";
   const isActive = billingState.subscriptionStatus === "active";
   const isPastDue = billingState.subscriptionStatus === "past_due";
+  const isCanceled = billingState.subscriptionStatus === "canceled";
   const trialLockedPlanId = billingState.trialPlanLocked;
   const trialLockedPlanLabel = trialLockedPlanId ? getPlanById(trialLockedPlanId).name : null;
+  const isConfirmedTrial = billingState.subscriptionStatus === "trial" && Boolean(trialLockedPlanId);
+  const isTrialEndingSoon = isConfirmedTrial && trialDaysLeft <= 7;
 
   const totals = useMemo(
-    () => computeBillingTotals(selectedPlanId, billingCycle, selectedAddons),
-    [selectedPlanId, billingCycle, selectedAddons],
+    () => computeBillingTotals(selectedPlanId, billingCycle, []),
+    [selectedPlanId, billingCycle],
   );
 
   const renderPaymentLogo = (methodId: string, label: string) => {
@@ -766,7 +835,86 @@ const AbonnementEntrepriseTab = ({
     void saveEntrepriseBillingStateRemote(user.id, next);
   };
 
+  const readFunctionErrorCode = async (error: any, data: any) => {
+    if (typeof data?.error === "string") return data.error;
+    const response = error?.context;
+    if (response && typeof response.json === "function") {
+      try {
+        const payload = await response.json();
+        if (typeof payload?.error === "string") return payload.error;
+      } catch {
+        // The generic error message below remains the fallback.
+      }
+    }
+    return typeof error?.message === "string" ? error.message : "unknown_error";
+  };
+
+  const verifierSiret = async (siretValue?: string) => {
+    const siret = String(siretValue ?? billingProfileDraft.siret).replace(/\D/g, "").slice(0, 14);
+    if (siret.length !== 14) {
+      toast.error("Le SIRET doit contenir exactement 14 chiffres.");
+      return;
+    }
+
+    setVerifyingSiret(true);
+    try {
+      const { data, error } = await supabase.functions.invoke("verify-company-siret", {
+        body: { siret },
+      });
+      if (error || !data?.company) {
+        const errorCode = await readFunctionErrorCode(error, data);
+        const messages: Record<string, string> = {
+          invalid_siret: "Le numéro SIRET n'est pas valide.",
+          siret_not_found: "Ce SIRET n'a pas été trouvé dans l'Annuaire des Entreprises.",
+          company_establishment_inactive: "Cet établissement est déclaré fermé ou inactif.",
+          siret_already_registered: "Ce SIRET est déjà lié à un autre compte Spotted Talent.",
+          verified_siret_is_locked: "Le SIRET vérifié de ce compte ne peut plus être remplacé.",
+          official_company_service_unavailable: "Le service officiel est momentanément indisponible. Réessayez dans quelques instants.",
+        };
+        throw new Error(messages[errorCode] || "La vérification du SIRET a échoué.");
+      }
+
+      const company = data.company;
+      const nextProfile: BillingProfile = {
+        ...billingProfileDraft,
+        siret: company.siret,
+        siretVerifiedAt: company.verifiedAt,
+        legalName: company.legalName || billingProfileDraft.legalName,
+        billingEmail: billingProfileDraft.billingEmail || user.email || "",
+        addressLine1: company.addressLine1 || billingProfileDraft.addressLine1,
+        postalCode: company.postalCode || billingProfileDraft.postalCode,
+        city: company.city || billingProfileDraft.city,
+        country: company.country || "France",
+      };
+      const nextState: EntrepriseBillingState = {
+        ...billingState,
+        billingProfile: nextProfile,
+        updatedAt: new Date().toISOString(),
+      };
+      setBillingProfileDraft(nextProfile);
+      persistBillingState(nextState);
+      toast.success("Entreprise vérifiée. Les coordonnées officielles ont été ajoutées.");
+    } catch (error: any) {
+      console.error("siret_verification_error", error);
+      toast.error(error?.message || "La vérification du SIRET a échoué.");
+    } finally {
+      setVerifyingSiret(false);
+    }
+  };
+
+  useEffect(() => {
+    const siret = billingProfileDraft.siret.replace(/\D/g, "");
+    if (billingProfileDraft.siretVerifiedAt || siret.length !== 14 || verifyingSiret) return;
+    if (lastAutomaticSiretAttempt.current === siret) return;
+    lastAutomaticSiretAttempt.current = siret;
+    void verifierSiret(siret);
+  }, [billingProfileDraft.siret, billingProfileDraft.siretVerifiedAt, verifyingSiret]);
+
   const enregistrerFacturation = () => {
+    if (!billingProfileDraft.siretVerifiedAt) {
+      toast.error("Vérifiez d'abord le SIRET de l'entreprise.");
+      return;
+    }
     if (!billingProfileDraft.legalName.trim()) {
       toast.error("Renseignez la raison sociale de l'entreprise.");
       return;
@@ -780,42 +928,38 @@ const AbonnementEntrepriseTab = ({
     toast.success("Coordonnées de facturation enregistrées.");
   };
 
-  const toggleAddon = (addonId: string) => {
-    setSelectedAddons((prev) => (
-      prev.includes(addonId)
-        ? prev.filter((item) => item !== addonId)
-        : [...prev, addonId]
-    ));
-  };
-
   const demarrerCheckoutStripe = async (planId: BillingPlanId) => {
-    if (!billingProfileDraft.legalName.trim()) {
-      toast.error("Ajoutez d'abord la raison sociale dans la section facturation B2B.");
+    if (!billingProfileDraft.siretVerifiedAt || !/^\d{14}$/.test(billingProfileDraft.siret)) {
+      toast.error("Vérifiez le SIRET avant de choisir un abonnement.");
       return;
     }
-    if (!billingProfileDraft.billingEmail.trim()) {
-      toast.error("Ajoutez d'abord un e-mail de facturation.");
+    if (!billingProfileDraft.legalName.trim() || !billingProfileDraft.addressLine1.trim() || !billingProfileDraft.postalCode.trim() || !billingProfileDraft.city.trim()) {
+      toast.error("Complétez le nom et l'adresse de l'entreprise avant le paiement.");
       return;
     }
-
-    const draft = buildNextState(undefined, planId);
-    persistBillingState(draft);
-
     setCheckoutPlanId(planId);
     try {
+      const checkoutBillingProfile = {
+        ...billingProfileDraft,
+        billingEmail: billingProfileDraft.billingEmail.trim() || user.email || "",
+      };
       const successUrl = `${window.location.origin}/entreprise/dashboard?tab=abonnement&billing_status=success&plan=${planId}&cycle=${billingCycle}`;
       const cancelUrl = `${window.location.origin}/entreprise/dashboard?tab=abonnement&billing_status=cancel`;
       const { data, error } = await supabase.functions.invoke("stripe-create-checkout-session", {
         body: {
           planId,
           billingCycle,
-          addons: selectedAddons,
-          billingProfile: billingProfileDraft,
+          addons: [],
+          billingProfile: checkoutBillingProfile,
           successUrl,
           cancelUrl,
         },
       });
       if (error) {
+        const errorCode = await readFunctionErrorCode(error, data);
+        if (errorCode === "company_verification_required") {
+          throw new Error("Le SIRET doit être vérifié avant le paiement.");
+        }
         throw error;
       }
       if (!data?.url || typeof data.url !== "string") {
@@ -824,31 +968,10 @@ const AbonnementEntrepriseTab = ({
       window.location.href = data.url;
     } catch (error: any) {
       console.error("stripe_checkout_error", error);
-      toast.error("Checkout Stripe indisponible. Utilisez le mode test en attendant la connexion serveur.");
+      toast.error(error?.message || "Checkout Stripe indisponible pour le moment. Réessayez dans quelques instants.");
     } finally {
       setCheckoutPlanId(null);
     }
-  };
-
-  const activerModeTest = (planId: BillingPlanId) => {
-    if (billingState.subscriptionStatus !== "trial") {
-      toast.error("L'essai gratuit n'est plus disponible sur ce compte.");
-      return;
-    }
-
-    if (trialLockedPlanId) {
-      toast.error(`Essai gratuit déjà validé sur ${trialLockedPlanLabel}. Impossible d'activer un second essai.`);
-      return;
-    }
-
-    const invoice = createPaidInvoice(planId, billingCycle, selectedAddons);
-    const next: EntrepriseBillingState = {
-      ...buildNextState({ trialPlanLocked: planId }, planId),
-      subscriptionStatus: "active",
-      invoices: [invoice, ...billingState.invoices].slice(0, 20),
-    };
-    persistBillingState(next);
-    toast.success("Plan activé en mode test. Aucun débit réel n'est appliqué.");
   };
 
   const ouvrirPortailStripe = async () => {
@@ -874,33 +997,108 @@ const AbonnementEntrepriseTab = ({
     }
   };
 
-  const priceSuffix = billingCycle === "yearly" ? "/an" : "/mois";
+  const telechargerFactureTest = async (invoice: BillingInvoice) => {
+    try {
+      const { default: jsPDF } = await import("jspdf");
+      const doc = new jsPDF({ unit: "pt", format: "a4" });
+      const pageWidth = doc.internal.pageSize.getWidth();
+      const margin = 48;
+      const vatCents = Math.max(0, invoice.amountTtcCents - invoice.amountHtCents);
+      const issuedAt = new Date(invoice.issuedAt).toLocaleDateString("fr-FR");
+
+      doc.setFillColor(24, 24, 27);
+      doc.rect(0, 0, pageWidth, 96, "F");
+      doc.setTextColor(255, 255, 255);
+      doc.setFont("helvetica", "bold");
+      doc.setFontSize(22);
+      doc.text("SPOTTED TALENT", margin, 58);
+      doc.setFontSize(16);
+      doc.text("FACTURE TEST", pageWidth - margin, 58, { align: "right" });
+
+      doc.setTextColor(153, 27, 27);
+      doc.setFontSize(10);
+      doc.text("DOCUMENT DE SIMULATION - AUCUNE VALEUR COMPTABLE", margin, 124);
+
+      doc.setTextColor(24, 24, 27);
+      doc.setFontSize(11);
+      doc.setFont("helvetica", "bold");
+      doc.text(`Numéro : ${invoice.invoiceNumber}`, margin, 162);
+      doc.setFont("helvetica", "normal");
+      doc.text(`Date d'émission : ${issuedAt}`, margin, 182);
+      doc.text(`Période : ${invoice.periodLabel}`, margin, 202);
+
+      doc.setFont("helvetica", "bold");
+      doc.text("CLIENT", margin, 248);
+      doc.setFont("helvetica", "normal");
+      const clientLines = [
+        billingProfileDraft.legalName || user.email || "Entreprise test",
+        billingProfileDraft.addressLine1,
+        billingProfileDraft.addressLine2,
+        [billingProfileDraft.postalCode, billingProfileDraft.city].filter(Boolean).join(" "),
+        billingProfileDraft.siret ? `SIRET : ${billingProfileDraft.siret}` : "",
+        billingProfileDraft.billingEmail || user.email || "",
+      ].filter(Boolean);
+      clientLines.forEach((line, index) => doc.text(String(line), margin, 270 + index * 18));
+
+      const tableTop = 390;
+      doc.setFillColor(244, 244, 245);
+      doc.rect(margin, tableTop, pageWidth - margin * 2, 34, "F");
+      doc.setFont("helvetica", "bold");
+      doc.text("Description", margin + 12, tableTop + 22);
+      doc.text("Montant", pageWidth - margin - 12, tableTop + 22, { align: "right" });
+      doc.setFont("helvetica", "normal");
+      doc.text(invoice.periodLabel, margin + 12, tableTop + 58);
+      doc.text(formatEuroFromCents(invoice.amountHtCents), pageWidth - margin - 12, tableTop + 58, { align: "right" });
+
+      const totalsX = pageWidth - margin - 190;
+      doc.text("Total HT", totalsX, tableTop + 108);
+      doc.text(formatEuroFromCents(invoice.amountHtCents), pageWidth - margin, tableTop + 108, { align: "right" });
+      doc.text("TVA", totalsX, tableTop + 132);
+      doc.text(formatEuroFromCents(vatCents), pageWidth - margin, tableTop + 132, { align: "right" });
+      doc.setFont("helvetica", "bold");
+      doc.setFontSize(13);
+      doc.text("Total TTC", totalsX, tableTop + 162);
+      doc.text(formatEuroFromCents(invoice.amountTtcCents), pageWidth - margin, tableTop + 162, { align: "right" });
+
+      doc.setFont("helvetica", "normal");
+      doc.setFontSize(9);
+      doc.setTextColor(113, 113, 122);
+      doc.text("Spotted Talent - www.spottedtalent.fr", margin, 770);
+      doc.text("Ce document sert uniquement à tester l'affichage et le téléchargement des factures.", margin, 788);
+      doc.save(`${invoice.invoiceNumber}-facture-test.pdf`);
+    } catch (error) {
+      console.error("test_invoice_pdf_error", error);
+      toast.error("Le PDF test n'a pas pu être généré.");
+    }
+  };
+
+  const priceSuffix = billingCycle === "yearly" ? "HT /an" : "HT /mois";
   const selectedPlan = getPlanById(selectedPlanId);
-  const selectedPlanYearlySavingsCents = getPlanYearlySavingsCents(selectedPlanId);
-  const selectedAddonsYearlySavingsCents = selectedAddons.reduce((sum, addonId) => {
-    const addon = getAddonById(addonId);
-    if (!addon) return sum;
-    return sum + Math.max(0, addon.monthlyPriceCents * 12 - addon.yearlyPriceCents);
-  }, 0);
-  const totalYearlySavingsCents = billingCycle === "yearly" ? selectedPlanYearlySavingsCents + selectedAddonsYearlySavingsCents : 0;
-  const canLaunchCheckout = Boolean(
-    billingProfileDraft.legalName.trim() && billingProfileDraft.billingEmail.trim(),
-  );
-  const isTrialModeAvailable = billingState.subscriptionStatus === "trial" && !trialLockedPlanId;
+  const isStripeTrialAvailable = billingState.subscriptionStatus === "trial" && !trialLockedPlanId;
+  const hasManagedStripeSubscription = isActive || isConfirmedTrial || isPastDue;
   const statusLabel = isActive
     ? "Actif"
     : isPastDue
       ? "Paiement en retard"
-      : isTrialExpired
-        ? "Bloqué"
-        : "Essai";
+      : isTrialExpired || isCanceled
+        ? "Expiré"
+        : isTrialEndingSoon
+          ? "Expire bientôt"
+          : "Essai";
   const statusColor = isActive
-    ? "text-emerald-300"
-    : isPastDue
-      ? "text-orange-300"
-      : isTrialExpired
-        ? "text-red-300"
-        : "text-amber-300";
+    ? "text-emerald-600 dark:text-emerald-400"
+    : isTrialEndingSoon
+      ? "text-orange-500"
+      : isPastDue || isTrialExpired || isCanceled
+        ? "text-red-600 dark:text-red-400"
+        : "text-zinc-950 dark:text-zinc-100";
+  const statusPanelClass = isActive
+    ? "border-emerald-500/35 bg-emerald-500/[0.06]"
+    : isTrialEndingSoon
+      ? "border-orange-500/40 bg-orange-500/[0.07]"
+      : isPastDue || isTrialExpired || isCanceled
+        ? "border-red-500/40 bg-red-500/[0.07]"
+        : "border-zinc-900/25 bg-zinc-950/[0.03] dark:border-zinc-100/20 dark:bg-zinc-100/[0.04]";
   const sortedInvoices = [...billingState.invoices].sort(
     (a, b) => new Date(b.issuedAt).getTime() - new Date(a.issuedAt).getTime(),
   );
@@ -924,15 +1122,17 @@ const AbonnementEntrepriseTab = ({
             </p>
           </div>
           <div className="dashboard-subcard p-5">
-            <p className="text-xs font-semibold uppercase tracking-[0.24em] text-primary">Plan actif</p>
+            <p className="text-xs font-semibold uppercase tracking-[0.24em] text-primary">
+              {isActive || isConfirmedTrial ? "Plan actuel" : "Formule présélectionnée"}
+            </p>
             <p className="mt-3 text-xl font-semibold text-foreground">{planEnCours.name}</p>
             <p className="mt-1 text-sm text-muted-foreground">
-              {formatEuroFromCents(getPlanPriceCents(billingState.plan, billingState.billingCycle))} {billingState.billingCycle === "yearly" ? "/an" : "/mois"}
+              {formatEuroFromCents(getPlanPriceCents(billingState.plan, billingState.billingCycle))} HT {billingState.billingCycle === "yearly" ? "/an" : "/mois"}
             </p>
             {billingState.billingCycle === "yearly" && (
               <p className="mt-1 text-xs text-emerald-300">
-                Soit {formatEuroFromCents(getYearlyEquivalentMonthlyCents(getPlanPriceCents(billingState.plan, "yearly")))} /mois
-                • Économie {formatEuroFromCents(getPlanYearlySavingsCents(billingState.plan))} /an
+                Soit {formatEuroFromCents(getYearlyEquivalentMonthlyCents(getPlanPriceCents(billingState.plan, "yearly")))} HT /mois
+                • Facturation annuelle en un paiement
               </p>
             )}
             <p className="mt-3 text-xs text-muted-foreground">
@@ -952,8 +1152,10 @@ const AbonnementEntrepriseTab = ({
         </div>
         <div className="dashboard-stat-card p-4">
           <p className="text-xs font-medium text-muted-foreground mb-1">Essai gratuit</p>
-          <p className="text-3xl font-bold">{isActive ? "Terminé" : `${trialDaysLeft} j`}</p>
-          <p className="text-xs text-muted-foreground mt-1">Fin prévue : {trialEndsAtDate.toLocaleDateString("fr-FR")}</p>
+          <p className="text-3xl font-bold">{isActive ? "Terminé" : isConfirmedTrial ? `${trialDaysLeft} j` : "À activer"}</p>
+          <p className="text-xs text-muted-foreground mt-1">
+            {isConfirmedTrial ? `Fin prévue : ${trialEndsAtDate.toLocaleDateString("fr-FR")}` : "La période commence après l'enregistrement de la carte."}
+          </p>
         </div>
         <div className="dashboard-stat-card p-4">
           <p className="text-xs font-medium text-muted-foreground mb-1">Mode de paiement</p>
@@ -970,24 +1172,28 @@ const AbonnementEntrepriseTab = ({
               ? "Abonnement actif."
               : isPastDue
                 ? "Un règlement est attendu pour éviter le blocage."
-              : isTrialExpired
+              : isTrialExpired || isCanceled
                 ? "Essai expiré: activez un plan pour débloquer."
-                : "Essai en cours, sans prélèvement réel."}
+                : isConfirmedTrial
+                  ? "Essai en cours avec carte enregistrée."
+                  : "Choisissez un plan pour enregistrer votre carte avec Stripe."}
           </p>
         </div>
       </div>
 
-      <div className={`dashboard-panel p-5 sm:p-6 ${isTrialExpired ? "border-red-500/30 bg-red-500/5" : "border-amber-500/30 bg-amber-500/5"}`}>
+      <div className={`dashboard-panel p-5 sm:p-6 ${statusPanelClass}`}>
         <p className="text-sm font-semibold text-foreground">Essai gratuit 30 jours</p>
         <p className="mt-2 text-sm text-muted-foreground">
           {isActive
             ? "Votre entreprise est sortie du mode essai et utilise un plan actif."
-            : isTrialExpired
+            : isTrialExpired || isCanceled
               ? "Votre essai est terminé. Les rubriques métier sont bloquées automatiquement jusqu'à l'activation d'un plan."
-              : `Votre essai est actif. Il reste ${trialDaysLeft} jour(s) avant blocage automatique des rubriques métier.`}
+              : isConfirmedTrial
+                ? `Votre essai est actif. Il reste ${trialDaysLeft} jour(s) avant le premier paiement.`
+                : "Choisissez une formule ci-dessous. Stripe demandera votre carte avant d'activer les 30 jours d'essai."}
         </p>
         {billingState.subscriptionStatus === "trial" && (
-          <p className="mt-2 text-xs text-amber-200">
+          <p className={`mt-2 text-xs ${isTrialEndingSoon ? "text-orange-600 dark:text-orange-300" : "text-zinc-800 dark:text-zinc-200"}`}>
             Essai unique par compte entreprise: un seul abonnement peut utiliser l'essai gratuit.
           </p>
         )}
@@ -998,7 +1204,7 @@ const AbonnementEntrepriseTab = ({
           <div>
             <p className="text-sm font-semibold text-foreground">Cycle de facturation</p>
             <p className="mt-1 text-sm text-muted-foreground">
-              Passez en annuel pour réduire le coût: {formatEuroFromCents(selectedPlanYearlySavingsCents)} d'économie sur le plan.
+              Le cycle annuel correspond à 12 mois facturés en un paiement, sans réduction permanente.
             </p>
           </div>
           <div className="inline-flex rounded-xl border border-border bg-secondary/40 p-1">
@@ -1018,7 +1224,7 @@ const AbonnementEntrepriseTab = ({
                 billingCycle === "yearly" ? "bg-primary/15 text-primary" : "text-muted-foreground hover:text-foreground"
               }`}
             >
-              Annuel (-20%)
+              Annuel
             </button>
           </div>
         </div>
@@ -1027,31 +1233,40 @@ const AbonnementEntrepriseTab = ({
       <div className="grid gap-4 lg:grid-cols-3">
         {ABONNEMENT_PLANS.map((plan) => {
           const actif = plan.id === billingState.plan && isActive && billingState.billingCycle === billingCycle;
+          const currentTrial = plan.id === trialLockedPlanId && isConfirmedTrial && billingState.billingCycle === billingCycle;
+          const currentPastDue = plan.id === billingState.plan && isPastDue && billingState.billingCycle === billingCycle;
+          const currentSubscription = actif || currentTrial || currentPastDue;
           const planPriceCents = getPlanPriceCents(plan.id, billingCycle);
-          const yearlyReferenceCents = getPlanYearlyReferenceCents(plan.id);
-          const yearlySavingsCents = getPlanYearlySavingsCents(plan.id);
           const yearlyEquivalentMonthlyCents = getYearlyEquivalentMonthlyCents(planPriceCents);
           const checkoutLoading = checkoutPlanId === plan.id;
+          const currentPlanClass = actif
+            ? "border-emerald-500/40 bg-emerald-500/[0.05]"
+            : currentTrial
+              ? isTrialEndingSoon
+                ? "border-orange-500/45 bg-orange-500/[0.06]"
+                : "border-zinc-900/35 bg-zinc-950/[0.03] dark:border-zinc-100/25"
+              : currentPastDue
+                ? "border-red-500/45 bg-red-500/[0.06]"
+                : "";
           return (
             <div
               key={plan.id}
-              className={`dashboard-panel p-5 sm:p-6 ${actif ? "border-primary/40 bg-primary/5 shadow-[0_18px_40px_-28px_hsl(var(--primary)/0.9)]" : ""}`}
+              className={`dashboard-panel p-5 sm:p-6 ${currentPlanClass}`}
             >
               <div className="flex items-start justify-between gap-3">
                 <div>
                   <p className="text-lg font-bold text-foreground">{plan.name}</p>
                   <p className="mt-1 text-sm text-muted-foreground">{plan.description}</p>
                 </div>
-                {actif && <span className="rounded-full border border-primary/30 bg-primary/15 px-2.5 py-1 text-[11px] font-semibold uppercase tracking-wide text-primary">Actif</span>}
+                {actif && <span className="rounded-full border border-emerald-500/30 bg-emerald-500/10 px-2.5 py-1 text-[11px] font-semibold uppercase tracking-wide text-emerald-700 dark:text-emerald-300">Actif</span>}
+                {currentTrial && <span className={`rounded-full border px-2.5 py-1 text-[11px] font-semibold uppercase tracking-wide ${isTrialEndingSoon ? "border-orange-500/40 bg-orange-500/10 text-orange-600 dark:text-orange-300" : "border-zinc-900/30 bg-zinc-950/[0.06] text-zinc-950 dark:border-zinc-100/25 dark:text-zinc-100"}`}>{isTrialEndingSoon ? "Expire bientôt" : "Essai"}</span>}
+                {currentPastDue && <span className="rounded-full border border-red-500/40 bg-red-500/10 px-2.5 py-1 text-[11px] font-semibold uppercase tracking-wide text-red-600 dark:text-red-300">Paiement requis</span>}
               </div>
               <p className="mt-5 text-2xl font-bold text-foreground">{formatEuroFromCents(planPriceCents)} {priceSuffix}</p>
               {billingCycle === "yearly" && (
                 <div className="mt-1 space-y-1">
                   <p className="text-xs text-emerald-300">
-                    Soit {formatEuroFromCents(yearlyEquivalentMonthlyCents)} /mois • Économie {formatEuroFromCents(yearlySavingsCents)} /an
-                  </p>
-                  <p className="text-xs text-muted-foreground line-through">
-                    Prix mensuel cumulé: {formatEuroFromCents(yearlyReferenceCents)} /an
+                    Soit {formatEuroFromCents(yearlyEquivalentMonthlyCents)} HT /mois, facturé annuellement.
                   </p>
                 </div>
               )}
@@ -1062,34 +1277,31 @@ const AbonnementEntrepriseTab = ({
               </div>
               <div className="mt-6 space-y-2">
                 <Button
-                  variant={actif ? "secondary" : "glow"}
+                  variant={currentSubscription ? "secondary" : "glow"}
                   className="w-full"
-                  disabled={checkoutLoading || !canLaunchCheckout}
-                  onClick={() => demarrerCheckoutStripe(plan.id)}
+                  disabled={checkoutLoading || openingPortal}
+                  onClick={() => hasManagedStripeSubscription ? ouvrirPortailStripe() : demarrerCheckoutStripe(plan.id)}
                 >
                   {checkoutLoading
                     ? "Ouverture du paiement..."
-                    : actif
-                        ? "Plan actuellement actif"
-                        : "Paiement sécurisé"}
+                    : hasManagedStripeSubscription
+                        ? openingPortal
+                          ? "Ouverture du portail..."
+                          : currentPastDue && currentSubscription
+                            ? "Régulariser le paiement"
+                            : currentSubscription
+                              ? "Gérer la carte et l'abonnement"
+                              : "Changer de formule dans Stripe"
+                        : isStripeTrialAvailable
+                          ? "Essai 30 jours avec carte"
+                          : "Paiement sécurisé"}
                 </Button>
-                {isTrialModeAvailable ? (
-                  <ConfirmActionDialog
-                    title={`Activer l'essai gratuit sur ${plan.name} ?`}
-                    description="Cet essai gratuit est unique pour votre compte entreprise. Après validation, vous ne pourrez plus changer de formule d'essai."
-                    confirmLabel="Oui, valider cet essai"
-                    cancelLabel="Annuler"
-                    confirmVariant="glow"
-                    onConfirm={() => activerModeTest(plan.id)}
-                  >
-                    <Button variant="ghost-glow" className="w-full">
-                      Démarrer l'essai gratuit
-                    </Button>
-                  </ConfirmActionDialog>
-                ) : (
-                  <Button variant="ghost-glow" className="w-full" disabled>
-                    {trialLockedPlanId ? `Essai déjà validé sur ${trialLockedPlanLabel}` : "Essai indisponible"}
-                  </Button>
+                {billingState.subscriptionStatus === "trial" && (
+                  <p className="text-center text-xs text-muted-foreground">
+                    {isStripeTrialAvailable
+                      ? "Essai unique: Stripe demandera une carte, sans débit avant la fin des 30 jours."
+                      : `Essai déjà choisi sur ${trialLockedPlanLabel}. Tout changement de formule passe par le portail Stripe.`}
+                  </p>
                 )}
               </div>
             </div>
@@ -1097,27 +1309,45 @@ const AbonnementEntrepriseTab = ({
         })}
       </div>
 
+      {getEffectiveBillingPlanId(billingState) === "premium" && hasManagedStripeSubscription && (
+        <div className="dashboard-panel border border-emerald-500/20 bg-emerald-500/[0.04] p-5 sm:p-6">
+          <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+            <div>
+              <p className="text-sm font-semibold text-foreground">Support prioritaire Premium</p>
+              <p className="mt-2 text-sm leading-6 text-muted-foreground">
+                Votre demande est identifiée comme prioritaire. Indiquez l'entreprise, le problème rencontré et, si possible, une capture d'écran.
+              </p>
+            </div>
+            <Button
+              type="button"
+              variant="ghost-glow"
+              className="w-full sm:w-auto"
+              onClick={() => {
+                const subject = encodeURIComponent(`Support prioritaire Premium - ${billingProfileDraft.legalName || "Entreprise"}`);
+                window.location.href = `mailto:spotter.talent.projet@gmail.com?subject=${subject}`;
+              }}
+            >
+              <Mail className="mr-2 h-4 w-4" /> Contacter le support
+            </Button>
+          </div>
+        </div>
+      )}
+
       <div className="dashboard-panel p-5 sm:p-6">
         <p className="text-sm font-semibold text-foreground">Add-ons intelligents</p>
         <p className="mt-2 text-sm text-muted-foreground">
-          Activez uniquement les options utiles à votre campagne en cours.
+          Ces options sont en préparation. Elles ne peuvent pas encore être achetées ni facturées.
         </p>
         <div className="mt-4 grid gap-3 lg:grid-cols-2">
           {BILLING_ADDONS.map((addon) => {
-            const selected = selectedAddons.includes(addon.id);
             const addonPrice = getAddonPriceCents(addon.id, billingCycle);
-            const addonYearlySavingsCents = Math.max(0, addon.monthlyPriceCents * 12 - addon.yearlyPriceCents);
             const addonYearlyEquivalentMonthlyCents = getYearlyEquivalentMonthlyCents(addon.yearlyPriceCents);
             return (
               <button
                 key={addon.id}
                 type="button"
-                onClick={() => toggleAddon(addon.id)}
-                className={`rounded-2xl border p-4 text-left transition-colors ${
-                  selected
-                    ? "border-primary/40 bg-primary/10"
-                    : "border-border/60 bg-secondary/20 hover:border-primary/25"
-                }`}
+                disabled
+                className="cursor-not-allowed rounded-2xl border border-border/60 bg-secondary/20 p-4 text-left opacity-70"
               >
                 <div className="flex items-start justify-between gap-3">
                   <div>
@@ -1128,12 +1358,13 @@ const AbonnementEntrepriseTab = ({
                     {formatEuroFromCents(addonPrice)} {priceSuffix}
                   </span>
                 </div>
-                <p className="mt-3 text-xs font-semibold uppercase tracking-wide text-primary">
-                  {selected ? "Activé" : "Cliquer pour activer"}
+                <p className="mt-3 inline-flex items-center gap-1.5 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+                  <Lock className="h-3.5 w-3.5" />
+                  Bientôt disponible
                 </p>
                 {billingCycle === "yearly" && (
                   <p className="mt-1 text-[11px] text-emerald-300">
-                    Soit {formatEuroFromCents(addonYearlyEquivalentMonthlyCents)} /mois • Économie {formatEuroFromCents(addonYearlySavingsCents)} /an
+                    Soit {formatEuroFromCents(addonYearlyEquivalentMonthlyCents)} HT /mois, facturé annuellement.
                   </p>
                 )}
               </button>
@@ -1178,6 +1409,47 @@ const AbonnementEntrepriseTab = ({
             <span className="rounded-full border border-border/60 bg-secondary/30 px-2.5 py-1 text-[11px] text-muted-foreground">Entreprise</span>
           </div>
           <div className="mt-4 grid gap-3 sm:grid-cols-2">
+            <div className="sm:col-span-2">
+              <label className="mb-1.5 flex items-center justify-between gap-2 text-xs font-medium text-muted-foreground">
+                <span>Numéro SIRET</span>
+                {billingProfileDraft.siretVerifiedAt && (
+                  <span className="inline-flex items-center gap-1 text-emerald-600 dark:text-emerald-400">
+                    <CheckCircle className="h-3.5 w-3.5" /> Vérifié et verrouillé
+                  </span>
+                )}
+              </label>
+              <div className="flex gap-2">
+                <div className="relative flex-1">
+                  <input
+                    value={billingProfileDraft.siret}
+                    onChange={(e) => {
+                      const nextSiret = e.target.value.replace(/\D/g, "").slice(0, 14);
+                      lastAutomaticSiretAttempt.current = "";
+                      updateBillingProfileField("siret", nextSiret);
+                    }}
+                    disabled={Boolean(billingProfileDraft.siretVerifiedAt) || verifyingSiret}
+                    inputMode="numeric"
+                    maxLength={14}
+                    className="w-full rounded-xl border border-border bg-secondary/45 px-3 py-2 pr-9 text-sm focus:border-primary/40 focus:outline-none disabled:cursor-not-allowed disabled:opacity-70"
+                    placeholder="14 chiffres"
+                  />
+                  {billingProfileDraft.siretVerifiedAt && <Lock className="absolute right-3 top-2.5 h-4 w-4 text-emerald-600" />}
+                </div>
+                {!billingProfileDraft.siretVerifiedAt && (
+                  <Button
+                    type="button"
+                    variant="secondary"
+                    onClick={() => verifierSiret()}
+                    disabled={verifyingSiret || billingProfileDraft.siret.length !== 14}
+                  >
+                    {verifyingSiret ? "Vérification..." : "Vérifier"}
+                  </Button>
+                )}
+              </div>
+              <p className="mt-1.5 text-[11px] leading-4 text-muted-foreground">
+                Le nom et l'adresse sont récupérés depuis l'Annuaire des Entreprises. Un SIRET vérifié ne peut être utilisé que sur un seul compte.
+              </p>
+            </div>
             <input
               value={billingProfileDraft.legalName}
               onChange={(e) => updateBillingProfileField("legalName", e.target.value)}
@@ -1191,6 +1463,12 @@ const AbonnementEntrepriseTab = ({
               placeholder="E-mail facturation"
             />
             <input
+              value={billingProfileDraft.phone}
+              onChange={(e) => updateBillingProfileField("phone", e.target.value)}
+              className="rounded-xl border border-border bg-secondary/45 px-3 py-2 text-sm focus:outline-none focus:border-primary/40"
+              placeholder="Téléphone entreprise"
+            />
+            <input
               value={billingProfileDraft.vatNumber}
               onChange={(e) => updateBillingProfileField("vatNumber", e.target.value)}
               className="rounded-xl border border-border bg-secondary/45 px-3 py-2 text-sm focus:outline-none focus:border-primary/40"
@@ -1201,6 +1479,12 @@ const AbonnementEntrepriseTab = ({
               onChange={(e) => updateBillingProfileField("addressLine1", e.target.value)}
               className="rounded-xl border border-border bg-secondary/45 px-3 py-2 text-sm focus:outline-none focus:border-primary/40"
               placeholder="Adresse"
+            />
+            <input
+              value={billingProfileDraft.addressLine2}
+              onChange={(e) => updateBillingProfileField("addressLine2", e.target.value)}
+              className="rounded-xl border border-border bg-secondary/45 px-3 py-2 text-sm focus:outline-none focus:border-primary/40"
+              placeholder="Complément d'adresse (optionnel)"
             />
             <input
               value={billingProfileDraft.postalCode}
@@ -1233,8 +1517,8 @@ const AbonnementEntrepriseTab = ({
               <span className="font-semibold">{formatEuroFromCents(totals.planHtCents)}</span>
             </div>
             <div className="flex items-center justify-between">
-              <span className="text-muted-foreground">Add-ons ({selectedAddons.length})</span>
-              <span className="font-semibold">{formatEuroFromCents(totals.addonsHtCents)}</span>
+              <span className="text-muted-foreground">Add-ons disponibles</span>
+              <span className="font-semibold">0</span>
             </div>
             <div className="flex items-center justify-between border-t border-border/60 pt-3">
               <span className="text-muted-foreground">Total HT</span>
@@ -1250,8 +1534,8 @@ const AbonnementEntrepriseTab = ({
             </div>
             {billingCycle === "yearly" && (
               <div className="flex items-center justify-between rounded-xl border border-emerald-500/20 bg-emerald-500/10 px-3 py-2">
-                <span className="text-emerald-200">Économie annuelle totale</span>
-                <span className="font-semibold text-emerald-300">{formatEuroFromCents(totalYearlySavingsCents)}</span>
+                <span className="text-emerald-200">Facturation annuelle</span>
+                <span className="font-semibold text-emerald-300">12 mois en un paiement</span>
               </div>
             )}
           </div>
@@ -1286,9 +1570,22 @@ const AbonnementEntrepriseTab = ({
                       {invoice.periodLabel} • Émise le {new Date(invoice.issuedAt).toLocaleDateString("fr-FR")}
                     </p>
                   </div>
-                  <div className="text-left sm:text-right">
+                  <div className="flex flex-col items-start gap-2 sm:items-end">
                     <p className="text-sm font-semibold text-foreground">{formatEuroFromCents(invoice.amountTtcCents)}</p>
                     <p className="text-xs text-muted-foreground">{invoice.status === "paid" ? "Payée" : invoice.status}</p>
+                    {invoice.pdfUrl ? (
+                      <Button asChild size="sm" variant="outline">
+                        <a href={invoice.pdfUrl} target="_blank" rel="noreferrer">
+                          <FileText className="mr-2 h-4 w-4" />
+                          Ouvrir la facture
+                        </a>
+                      </Button>
+                    ) : (
+                      <Button size="sm" variant="outline" onClick={() => void telechargerFactureTest(invoice)}>
+                        <FileText className="mr-2 h-4 w-4" />
+                        Télécharger le PDF test
+                      </Button>
+                    )}
                   </div>
                 </div>
               </div>
@@ -1610,7 +1907,29 @@ const ProfilEntrepriseTab = ({ profile, user, avatarUrl, setAvatarUrl }: any) =>
   );
 };
 
-const OffresTab = ({ user, onOffrePubliee }: any) => {
+type ScreeningQuestion = {
+  id: string;
+  label: string;
+  required: boolean;
+};
+
+const createScreeningQuestion = (): ScreeningQuestion => ({
+  id: typeof crypto !== "undefined" && crypto.randomUUID ? crypto.randomUUID() : `question-${Date.now()}`,
+  label: "",
+  required: true,
+});
+
+const OffresTab = ({
+  user,
+  planId,
+  entitlements,
+  onOffrePubliee,
+}: {
+  user: any;
+  planId: BillingPlanId;
+  entitlements: BillingPlanEntitlements;
+  onOffrePubliee: () => void;
+}) => {
   const [poste, setPoste] = useState("");
   const [entreprise, setEntreprise] = useState("");
   const [competences, setCompetences] = useState("");
@@ -1626,6 +1945,30 @@ const OffresTab = ({ user, onOffrePubliee }: any) => {
   const [publishing, setPublishing] = useState(false);
   const [urgent, setUrgent] = useState(false);
   const [permisRequis, setPermisRequis] = useState<string[]>([]);
+  const [activeOfferCount, setActiveOfferCount] = useState(0);
+  const [screeningQuestions, setScreeningQuestions] = useState<ScreeningQuestion[]>([]);
+
+  useEffect(() => {
+    if (!user) return;
+    void supabase
+      .from("offres")
+      .select("*", { count: "exact", head: true })
+      .eq("entreprise_id", user.id)
+      .eq("statut", "active")
+      .then(({ count }) => setActiveOfferCount(count || 0));
+  }, [user]);
+
+  const activeOfferLimitReached =
+    entitlements.maxActiveOffers !== null && activeOfferCount >= entitlements.maxActiveOffers;
+
+  const addScreeningQuestion = () => {
+    if (!entitlements.screeningQuestions || screeningQuestions.length >= 5) return;
+    setScreeningQuestions((current) => [...current, createScreeningQuestion()]);
+  };
+
+  const updateScreeningQuestion = (id: string, patch: Partial<ScreeningQuestion>) => {
+    setScreeningQuestions((current) => current.map((question) => question.id === id ? { ...question, ...patch } : question));
+  };
 
   const listeAvantages = ["Mutuelle", "Tickets restaurant", "Télétravail", "Véhicule de fonction", "Prime annuelle", "RTT", "Formation continue", "Participation aux bénéfices", "Logement de fonction", "13e mois"];
   const toggleAvantage = (a: string) => { setAvantages(prev => prev.includes(a) ? prev.filter(x => x !== a) : [...prev, a]); };
@@ -1634,22 +1977,24 @@ const OffresTab = ({ user, onOffrePubliee }: any) => {
     if (!poste) return toast.error("Remplissez le poste");
     setLoading(true);
     try {
-      const salaire = salaireMin && salaireMax ? `Salaire: ${salaireMin}EUR - ${salaireMax}EUR brut/mois.` : "";
-      const avantagesStr = avantages.length > 0 ? `Avantages: ${avantages.join(", ")}.` : "";
-      const diplomeStr = diplome !== "Sans diplôme" ? `Diplome requis: ${diplome}.` : "";
-      const secteurStr = secteurOffre ? `Secteur: ${secteurOffre}.` : "";
-      const response = await fetch("https://api.groq.com/openai/v1/chat/completions", {
-        method: "POST",
-        headers: { "Content-Type": "application/json", "Authorization": `Bearer ${import.meta.env.VITE_GROQ_API_KEY}` },
-        body: JSON.stringify({ model: "llama-3.3-70b-versatile", messages: [{ role: "system", content: "Tu es un expert RH qui redige des offres d emploi attractives et professionnelles en francais." }, { role: "user", content: `Redige une offre d emploi complete pour le poste de ${poste} ${entreprise ? `chez ${entreprise}` : ""}. Contrat: ${contrat}. Localisation: ${localisation || "France"}. ${secteurStr} Competences: ${competences || "a definir"}. ${diplomeStr} ${salaire} ${avantagesStr} Inclure: description, missions, profil recherche, avantages.` }], temperature: 0.7, max_tokens: 1200 }),
+      const contenu = await requestAiContent("generate_offer", {
+        poste,
+        entreprise,
+        contrat,
+        localisation,
+        secteur: secteurOffre,
+        competences,
+        diplome: diplome !== "Sans diplôme" ? diplome : "",
+        salaireMin,
+        salaireMax,
+        avantages,
       });
-      const data = await response.json();
-      setOffre(data.choices[0].message.content);
+      setOffre(contenu);
       toast.success("Offre générée !");
     } catch (err) { toast.error("Erreur lors de la génération."); } finally { setLoading(false); }
   };
 
-  const notifierTalentsParEmail = async (offreId: string, nomEntreprise: string | null) => {
+  const notifierTalentsParEmail = async (offreId: string) => {
     const { data: talents, error } = await supabase.rpc("get_matching_talent_email_recipients_for_offer", {
       p_offre_id: offreId,
     });
@@ -1662,10 +2007,7 @@ const OffresTab = ({ user, onOffrePubliee }: any) => {
       destinataires.map((talent: any) =>
         emailNouvelleOffreTalent(
           talent.email,
-          poste,
-          nomEntreprise,
-          localisation || null,
-          contrat || null,
+          offreId,
         )
       )
     );
@@ -1675,6 +2017,12 @@ const OffresTab = ({ user, onOffrePubliee }: any) => {
 
   const publierOffre = async () => {
     if (!offre || !poste) return toast.error("Générez d'abord une offre.");
+    if (activeOfferLimitReached) {
+      return toast.error(`La formule ${getPlanById(planId).name} autorise ${entitlements.maxActiveOffers} offre(s) active(s). Mettez une offre en pause ou changez de formule.`);
+    }
+    const normalizedQuestions = screeningQuestions
+      .map((question) => ({ ...question, label: question.label.trim() }))
+      .filter((question) => question.label);
     setPublishing(true);
     try {
       const { data: offrePubliee, error } = await supabase.from("offres").insert({
@@ -1690,26 +2038,34 @@ const OffresTab = ({ user, onOffrePubliee }: any) => {
         salaire_max: salaireMax ? parseInt(salaireMax) : null,
         avantages: avantages.join(", "),
         permis_requis: permisRequis.join(", "),
-        urgent,
+        urgent: entitlements.urgentBadge ? urgent : false,
+        questions_preselection: entitlements.screeningQuestions ? normalizedQuestions : [],
         statut: "active",
       }).select("id").single();
       if (error) throw error;
       toast.success("Offre publiée !");
-      let nomEntrepriseEmail = entreprise || null;
       try {
-        const { data: profile } = await supabase.from("profiles").select("email, full_name").eq("user_id", user.id).single();
-        if (!nomEntrepriseEmail) nomEntrepriseEmail = profile?.full_name || null;
-        if (profile?.email) await envoyerEmail(profile.email, `Votre offre "${poste}" est publiée !`, `<div style="font-family:sans-serif;max-width:600px;margin:auto"><h2 style="color:#8b5cf6">Votre offre est en ligne !</h2><p>Votre offre <strong>${poste}</strong> est maintenant visible par les talents.</p><p>Consultez vos candidatures sur <a href="https://www.spottedtalent.fr/entreprise">www.spottedtalent.fr</a></p><br/><p style="color:#888;font-size:12px">© 2026 Spotted Talent</p></div>`);
+        const { data: profile } = await supabase.from("profiles").select("email").eq("user_id", user.id).single();
+        if (profile?.email && offrePubliee?.id) await emailOffrePubliee(profile.email, offrePubliee.id);
       } catch (err) { console.error("Erreur email:", err); }
       if (offrePubliee?.id) {
-        void notifierTalentsParEmail(offrePubliee.id, nomEntrepriseEmail)
+        void notifierTalentsParEmail(offrePubliee.id)
           .then((count) => {
             if (count > 0) toast.success(`${count} talent(s) ont reçu cette nouvelle offre par email.`);
           })
           .catch((err) => console.error("Erreur notifications offres:", err));
       }
       onOffrePubliee();
-    } catch (err: any) { toast.error(err.message); } finally { setPublishing(false); }
+    } catch (err: any) {
+      const message = String(err?.message || "");
+      if (message.includes("active_offer_limit_reached")) {
+        toast.error("La limite d'annonces actives de votre formule est atteinte.");
+      } else if (message.includes("feature_not_in_plan")) {
+        toast.error("Cette option n'est pas incluse dans votre formule actuelle.");
+      } else {
+        toast.error(message || "Impossible de publier cette offre.");
+      }
+    } finally { setPublishing(false); }
   };
 
   const completionFields = [poste, contrat, localisation, secteurOffre, diplome, competences, offre].filter((value) => String(value || "").trim()).length;
@@ -1914,15 +2270,78 @@ const OffresTab = ({ user, onOffrePubliee }: any) => {
                 </div>
               </div>
             </div>
+            <div className="mt-5 rounded-xl border border-border/70 bg-background/35 p-4">
+              <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+                <div>
+                  <p className="text-sm font-semibold text-foreground">Questions de présélection</p>
+                  <p className="mt-1 text-xs leading-5 text-muted-foreground">
+                    {entitlements.screeningQuestions
+                      ? "Ajoutez jusqu'à 5 questions auxquelles le candidat répondra avant d'envoyer sa candidature."
+                      : "Disponible avec les formules Boost et Premium Intérim."}
+                  </p>
+                </div>
+                <Button
+                  type="button"
+                  variant="ghost-glow"
+                  size="sm"
+                  disabled={!entitlements.screeningQuestions || screeningQuestions.length >= 5}
+                  onClick={addScreeningQuestion}
+                  className="w-full sm:w-auto"
+                >
+                  <Plus className="mr-1 h-4 w-4" /> Ajouter une question
+                </Button>
+              </div>
+              {entitlements.screeningQuestions && screeningQuestions.length > 0 && (
+                <div className="mt-4 space-y-3">
+                  {screeningQuestions.map((question, index) => (
+                    <div key={question.id} className="rounded-xl border border-border/60 bg-secondary/30 p-3">
+                      <div className="flex items-start gap-3">
+                        <div className="min-w-0 flex-1">
+                          <label className="mb-1 block text-xs font-medium text-muted-foreground">Question {index + 1}</label>
+                          <input
+                            value={question.label}
+                            maxLength={240}
+                            onChange={(event) => updateScreeningQuestion(question.id, { label: event.target.value })}
+                            className="w-full rounded-lg border border-border bg-background/70 px-3 py-2 text-sm focus:border-accent/50 focus:outline-none"
+                            placeholder="Ex. : Êtes-vous disponible pour travailler le week-end ?"
+                          />
+                          <label className="mt-2 inline-flex items-center gap-2 text-xs text-muted-foreground">
+                            <input
+                              type="checkbox"
+                              checked={question.required}
+                              onChange={(event) => updateScreeningQuestion(question.id, { required: event.target.checked })}
+                            />
+                            Réponse obligatoire
+                          </label>
+                        </div>
+                        <button
+                          type="button"
+                          onClick={() => setScreeningQuestions((current) => current.filter((item) => item.id !== question.id))}
+                          className="inline-flex h-9 w-9 items-center justify-center rounded-lg border border-red-500/20 text-red-400 hover:bg-red-500/10"
+                          aria-label={`Supprimer la question ${index + 1}`}
+                        >
+                          <Trash2 className="h-4 w-4" />
+                        </button>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+
             <button
               type="button"
-              className="mt-4 flex w-full items-center gap-3 rounded-lg border border-red-500/20 bg-red-500/10 p-3 text-left"
-              onClick={() => setUrgent(!urgent)}
+              disabled={!entitlements.urgentBadge}
+              className={`mt-4 flex w-full items-center gap-3 rounded-lg border p-3 text-left ${entitlements.urgentBadge ? "border-red-500/20 bg-red-500/10" : "cursor-not-allowed border-border/60 bg-secondary/25 opacity-65"}`}
+              onClick={() => entitlements.urgentBadge && setUrgent(!urgent)}
             >
-              <div className={`flex h-5 w-5 items-center justify-center rounded border-2 transition-all ${urgent ? "border-red-500 bg-red-500" : "border-red-400"}`}>
+              <div className={`flex h-5 w-5 items-center justify-center rounded border-2 transition-all ${urgent ? "border-red-500 bg-red-500" : entitlements.urgentBadge ? "border-red-400" : "border-muted-foreground/40"}`}>
                 {urgent && <Check className="h-3 w-3 text-white" />}
               </div>
-              <span className="text-sm font-medium text-red-400">Offre urgente</span>
+              <span className={entitlements.urgentBadge ? "text-sm font-medium text-red-400" : "text-sm font-medium text-muted-foreground"}>
+                Offre urgente
+              </span>
+              {!entitlements.urgentBadge && <span className="ml-auto text-xs text-muted-foreground">Boost ou Premium</span>}
               {urgent && <span className="ml-auto rounded-full bg-red-500 px-2 py-0.5 text-xs font-bold text-white">URGENT</span>}
             </button>
           </div>
@@ -1943,9 +2362,9 @@ const OffresTab = ({ user, onOffrePubliee }: any) => {
               </p>
             </div>
             {offre && (
-              <Button className="w-full sm:w-auto" variant="glow" size="sm" onClick={publierOffre} disabled={publishing}>
+              <Button className="w-full sm:w-auto" variant="glow" size="sm" onClick={publierOffre} disabled={publishing || activeOfferLimitReached}>
                 <CheckCircle className="mr-1 h-4 w-4" />
-                {publishing ? "Publication..." : "Publier l'offre"}
+                {publishing ? "Publication..." : activeOfferLimitReached ? "Limite d'annonces atteinte" : "Publier l'offre"}
               </Button>
             )}
           </div>
@@ -2007,7 +2426,17 @@ const OffresTab = ({ user, onOffrePubliee }: any) => {
 };
 
 // ─── Formulaire de modification inline ───────────────────────────────────────
-const FormulaireModification = ({ offre, onSave, onCancel }: { offre: any; onSave: () => void; onCancel: () => void }) => {
+const FormulaireModification = ({
+  offre,
+  entitlements,
+  onSave,
+  onCancel,
+}: {
+  offre: any;
+  entitlements: BillingPlanEntitlements;
+  onSave: () => void;
+  onCancel: () => void;
+}) => {
   const [titre, setTitre] = useState(offre.titre || "");
   const [contrat, setContrat] = useState(offre.contrat || "CDI");
   const [localisation, setLocalisation] = useState(offre.localisation || "");
@@ -2016,6 +2445,9 @@ const FormulaireModification = ({ offre, onSave, onCancel }: { offre: any; onSav
   const [competences, setCompetences] = useState(offre.competences || "");
   const [description, setDescription] = useState(offre.description || "");
   const [urgent, setUrgent] = useState(offre.urgent || false);
+  const [screeningQuestions, setScreeningQuestions] = useState<ScreeningQuestion[]>(
+    Array.isArray(offre.questions_preselection) ? offre.questions_preselection : [],
+  );
   const [saving, setSaving] = useState(false);
 
   const sauvegarder = async () => {
@@ -2030,7 +2462,10 @@ const FormulaireModification = ({ offre, onSave, onCancel }: { offre: any; onSav
         salaire_max: salaireMax ? parseInt(salaireMax) : null,
         competences,
         description,
-        urgent,
+        urgent: entitlements.urgentBadge ? urgent : false,
+        questions_preselection: entitlements.screeningQuestions
+          ? screeningQuestions.map((question) => ({ ...question, label: question.label.trim() })).filter((question) => question.label)
+          : [],
       }).eq("id", offre.id);
       if (error) throw error;
       toast.success("Offre mise à jour !");
@@ -2056,10 +2491,66 @@ const FormulaireModification = ({ offre, onSave, onCancel }: { offre: any; onSav
         <div><label className="text-xs text-muted-foreground mb-1 block">Salaire max (EUR)</label><input value={salaireMax} onChange={(e) => setSalaireMax(e.target.value)} type="number" className="w-full bg-secondary border border-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-accent/50" /></div>
         <div className="col-span-2"><label className="text-xs text-muted-foreground mb-1 block">Compétences</label><input value={competences} onChange={(e) => setCompetences(e.target.value)} className="w-full bg-secondary border border-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-accent/50" /></div>
         <div className="col-span-2"><label className="text-xs text-muted-foreground mb-1 block">Description</label><textarea value={description} onChange={(e) => setDescription(e.target.value)} rows={6} className="w-full bg-secondary border border-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-accent/50 resize-none" /></div>
-        <div className="col-span-2 flex items-center gap-3 p-3 bg-red-500/10 border border-red-500/20 rounded-lg cursor-pointer" onClick={() => setUrgent(!urgent)}>
+        {entitlements.screeningQuestions && (
+          <div className="col-span-2 rounded-xl border border-border/60 bg-secondary/20 p-4">
+            <div className="flex items-center justify-between gap-3">
+              <div>
+                <p className="text-sm font-semibold">Questions de présélection</p>
+                <p className="mt-1 text-xs text-muted-foreground">Jusqu'à 5 questions avant la candidature.</p>
+              </div>
+              <Button
+                type="button"
+                variant="ghost-glow"
+                size="sm"
+                disabled={screeningQuestions.length >= 5}
+                onClick={() => setScreeningQuestions((current) => [...current, createScreeningQuestion()])}
+              >
+                <Plus className="mr-1 h-4 w-4" /> Ajouter
+              </Button>
+            </div>
+            <div className="mt-3 space-y-2">
+              {screeningQuestions.map((question, index) => (
+                <div key={question.id} className="flex items-start gap-2">
+                  <div className="min-w-0 flex-1">
+                    <input
+                      value={question.label}
+                      maxLength={240}
+                      onChange={(event) => setScreeningQuestions((current) => current.map((item) => item.id === question.id ? { ...item, label: event.target.value } : item))}
+                      className="w-full rounded-lg border border-border bg-background/70 px-3 py-2 text-sm focus:border-accent/50 focus:outline-none"
+                      placeholder={`Question ${index + 1}`}
+                    />
+                    <label className="mt-1 inline-flex items-center gap-2 text-xs text-muted-foreground">
+                      <input
+                        type="checkbox"
+                        checked={question.required}
+                        onChange={(event) => setScreeningQuestions((current) => current.map((item) => item.id === question.id ? { ...item, required: event.target.checked } : item))}
+                      />
+                      Obligatoire
+                    </label>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => setScreeningQuestions((current) => current.filter((item) => item.id !== question.id))}
+                    className="inline-flex h-9 w-9 items-center justify-center rounded-lg border border-red-500/20 text-red-400 hover:bg-red-500/10"
+                    aria-label={`Supprimer la question ${index + 1}`}
+                  >
+                    <Trash2 className="h-4 w-4" />
+                  </button>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+        <button
+          type="button"
+          disabled={!entitlements.urgentBadge}
+          className={`col-span-2 flex items-center gap-3 rounded-lg border p-3 ${entitlements.urgentBadge ? "cursor-pointer border-red-500/20 bg-red-500/10" : "cursor-not-allowed border-border/60 bg-secondary/25 opacity-65"}`}
+          onClick={() => entitlements.urgentBadge && setUrgent(!urgent)}
+        >
           <div className={`w-5 h-5 rounded border-2 flex items-center justify-center transition-all ${urgent ? "bg-red-500 border-red-500" : "border-red-400"}`}>{urgent && <Check className="w-3 h-3 text-white" />}</div>
           <span className="text-sm font-medium text-red-400">Offre urgente</span>
-        </div>
+          {!entitlements.urgentBadge && <span className="ml-auto text-xs text-muted-foreground">Boost ou Premium</span>}
+        </button>
       </div>
       <div className="flex flex-col gap-2 pt-2 sm:flex-row">
         <Button variant="glow" size="sm" onClick={sauvegarder} disabled={saving} className="w-full sm:flex-1">{saving ? "Sauvegarde..." : "Sauvegarder les modifications"}</Button>
@@ -2069,7 +2560,7 @@ const FormulaireModification = ({ offre, onSave, onCancel }: { offre: any; onSav
   );
 };
 
-const MesOffresTab = ({ user, refreshToken = 0, onOffresChanged }: any) => {
+const MesOffresTab = ({ user, entitlements, refreshToken = 0, onOffresChanged }: any) => {
   const [offres, setOffres] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [offreEnEdition, setOffreEnEdition] = useState<string | null>(null);
@@ -2089,7 +2580,13 @@ const MesOffresTab = ({ user, refreshToken = 0, onOffresChanged }: any) => {
 
   const toggleStatut = async (id: string, statut: string) => {
     const newStatut = statut === "active" ? "inactive" : "active";
-    await supabase.from("offres").update({ statut: newStatut }).eq("id", id);
+    const { error } = await supabase.from("offres").update({ statut: newStatut }).eq("id", id);
+    if (error) {
+      toast.error(error.message.includes("active_offer_limit_reached")
+        ? "La limite d'annonces actives de votre formule est atteinte."
+        : "Impossible de modifier cette annonce.");
+      return;
+    }
     chargerOffres();
     toast.success(newStatut === "active" ? "Offre activée" : "Offre désactivée");
   };
@@ -2258,6 +2755,7 @@ const MesOffresTab = ({ user, refreshToken = 0, onOffresChanged }: any) => {
               {offreEnEdition === offre.id && (
                 <FormulaireModification
                   offre={offre}
+                  entitlements={entitlements}
                   onSave={() => { setOffreEnEdition(null); chargerOffres(); }}
                   onCancel={() => setOffreEnEdition(null)}
                 />
@@ -2302,7 +2800,46 @@ const MesOffresTab = ({ user, refreshToken = 0, onOffresChanged }: any) => {
   );
 };
 
-const CandidatsTab = ({ user }: any) => {
+const normalizeMatchingValue = (value?: string | null) =>
+  String(value || "")
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .toLowerCase();
+
+const calculateCandidateMatch = (offre: any, profil: any) => {
+  if (!offre || !profil) return 0;
+  let score = 0;
+  if (normalizeMatchingValue(offre.secteur) && normalizeMatchingValue(offre.secteur) === normalizeMatchingValue(profil.secteur)) score += 30;
+  if (normalizeMatchingValue(offre.contrat) && normalizeMatchingValue(offre.contrat) === normalizeMatchingValue(profil.contrat)) score += 20;
+  if (normalizeMatchingValue(offre.localisation) && normalizeMatchingValue(profil.localisation)) {
+    const offerLocation = normalizeMatchingValue(offre.localisation);
+    const candidateLocation = normalizeMatchingValue(profil.localisation);
+    if (offerLocation.includes(candidateLocation) || candidateLocation.includes(offerLocation)) score += 20;
+  }
+  const offerSkills = normalizeMatchingValue(offre.competences).split(/[,;\s]+/).filter((item) => item.length > 2);
+  const candidateSkills = normalizeMatchingValue(profil.competences).split(/[,;\s]+/).filter((item) => item.length > 2);
+  if (offerSkills.length > 0 && candidateSkills.length > 0) {
+    const matches = offerSkills.filter((skill) => candidateSkills.some((candidateSkill) => candidateSkill.includes(skill) || skill.includes(candidateSkill)));
+    score += Math.min(25, Math.round((matches.length / offerSkills.length) * 25));
+  }
+  if (normalizeMatchingValue(offre.permis_requis) && normalizeMatchingValue(profil.permis)) {
+    const requiredPermits = normalizeMatchingValue(offre.permis_requis).split(/[,;]+/).map((item) => item.trim()).filter(Boolean);
+    const candidatePermits = normalizeMatchingValue(profil.permis);
+    if (requiredPermits.some((permit) => candidatePermits.includes(permit))) score += 5;
+  }
+  return Math.min(100, score);
+};
+
+const escapeCsvCell = (value: unknown) => `"${String(value ?? "").replace(/"/g, '""')}"`;
+
+const CandidatsTab = ({
+  user,
+  entitlements,
+}: {
+  user: any;
+  planId: BillingPlanId;
+  entitlements: BillingPlanEntitlements;
+}) => {
   const navigate = useNavigate();
   const [candidatures, setCandidatures] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
@@ -2313,12 +2850,12 @@ const CandidatsTab = ({ user }: any) => {
 
   const chargerCandidatures = async () => {
     if (!user) return;
-    const { data: offres } = await supabase.from("offres").select("id, titre, contrat, localisation").eq("entreprise_id", user.id);
+    const { data: offres } = await supabase.from("offres").select("id, titre, contrat, localisation, secteur, competences, permis_requis").eq("entreprise_id", user.id);
     if (!offres || offres.length === 0) { setLoading(false); return; }
     const ids = offres.map((o: any) => o.id);
     const { data: cands } = await supabase.from("candidatures").select("*, offre:offre_id(titre, contrat, localisation)").in("offre_id", ids).order("created_at", { ascending: false });
     const candsAvecProfil = await Promise.all((cands || []).map(async (c: any) => {
-      const { data: talentProfil } = await supabase.from("profiles").select("full_name, poste, localisation, competences, bio, email").eq("user_id", c.talent_id).single();
+      const { data: talentProfil } = await supabase.from("profiles").select("full_name, poste, localisation, competences, bio, email, secteur, contrat, permis").eq("user_id", c.talent_id).single();
       let talentAvatarUrl = null;
       try {
         const { data: avatarList } = await supabase.storage.from("avatars").list(c.talent_id);
@@ -2327,7 +2864,7 @@ const CandidatsTab = ({ user }: any) => {
           talentAvatarUrl = data.publicUrl + "?t=" + Date.now();
         }
       } catch (err) { /* pas de photo */ }
-      return { ...c, talentProfil, talentAvatarUrl };
+      return { ...c, talentProfil, talentAvatarUrl, matchScore: calculateCandidateMatch(c.offre, talentProfil) };
     }));
     setCandidatures(candsAvecProfil);
     setLoading(false);
@@ -2341,7 +2878,9 @@ const CandidatsTab = ({ user }: any) => {
       const candidature = candidatures.find(c => c.id === id);
       if (candidature) {
         const { data: talentProfile } = await supabase.from("profiles").select("email").eq("user_id", candidature.talent_id).single();
-        if (talentProfile?.email) await emailCandidatureStatut(talentProfile.email, candidature.offre?.titre || "", statut);
+        if (entitlements.automatedCandidateMessages && talentProfile?.email) {
+          await emailCandidatureStatut(talentProfile.email, candidature.id, statut);
+        }
       }
     } catch (err) { console.error("Erreur email statut:", err); }
   };
@@ -2385,7 +2924,35 @@ const CandidatsTab = ({ user }: any) => {
       ]
         .filter(Boolean)
         .some((value) => String(value).toLowerCase().includes(query));
-    });
+    })
+    .sort((a, b) => entitlements.candidateMatching ? (b.matchScore || 0) - (a.matchScore || 0) : 0);
+
+  const exporterCandidatures = () => {
+    if (!entitlements.candidateExport) {
+      toast.error("L'export des candidats est réservé à Premium Intérim.");
+      return;
+    }
+    const headers = ["Candidat", "E-mail", "Poste recherché", "Offre", "Statut", "Localisation", "Compétences", "Score de matching"];
+    const rows = candidaturesFiltrees.map((c) => [
+      c.talentProfil?.full_name,
+      c.talentProfil?.email,
+      c.talentProfil?.poste,
+      c.offre?.titre,
+      getDisplayCandidatureStatus(c.statut),
+      c.talentProfil?.localisation,
+      c.talentProfil?.competences,
+      `${c.matchScore || 0}%`,
+    ]);
+    const csv = [headers, ...rows].map((row) => row.map(escapeCsvCell).join(";")).join("\r\n");
+    const blob = new Blob([`\uFEFF${csv}`], { type: "text/csv;charset=utf-8" });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    link.href = url;
+    link.download = `candidatures-spotted-talent-${new Date().toISOString().slice(0, 10)}.csv`;
+    link.click();
+    URL.revokeObjectURL(url);
+    toast.success("Export des candidatures téléchargé.");
+  };
 
   if (loading) return <div className="text-muted-foreground">Chargement...</div>;
 
@@ -2403,6 +2970,17 @@ const CandidatsTab = ({ user }: any) => {
               Tout le suivi candidat reste ici : tri, priorités, décisions, documents et bascule
               rapide vers le profil complet ou la messagerie.
             </p>
+            <Button
+              type="button"
+              variant="ghost-glow"
+              size="sm"
+              disabled={!entitlements.candidateExport || candidatures.length === 0}
+              onClick={exporterCandidatures}
+              className="mt-4 w-full sm:w-auto"
+            >
+              <Download className="mr-2 h-4 w-4" />
+              {entitlements.candidateExport ? "Exporter les candidats (CSV)" : "Export CSV inclus avec Premium"}
+            </Button>
           </div>
           <div className="dashboard-subcard p-5">
             <p className="text-xs font-semibold uppercase tracking-[0.24em] text-accent">Vue rapide</p>
@@ -2514,6 +3092,17 @@ const CandidatsTab = ({ user }: any) => {
                 <div>
                   <div className="flex items-center gap-3 mb-2 flex-wrap">
                     <h3 className="font-bold">{c.offre?.titre || "Offre"}</h3>
+                    {entitlements.candidateMatching && (
+                      <span className={`rounded-full border px-2 py-0.5 text-xs font-semibold ${
+                        (c.matchScore || 0) >= 70
+                          ? "border-emerald-500/30 bg-emerald-500/10 text-emerald-300"
+                          : (c.matchScore || 0) >= 40
+                            ? "border-amber-500/30 bg-amber-500/10 text-amber-300"
+                            : "border-border bg-secondary text-muted-foreground"
+                      }`}>
+                        {c.matchScore || 0}% de correspondance
+                      </span>
+                    )}
                     <span className={`text-xs px-2 py-0.5 rounded-full border ${
                       c.statut === "acceptee" ? "bg-green-500/10 text-green-400 border-green-500/20" :
                       c.statut === "refusee" ? "bg-red-500/10 text-red-400 border-red-500/20" :
@@ -2584,6 +3173,19 @@ const CandidatsTab = ({ user }: any) => {
                     </div>
                     ) : (
                       <p className="text-xs text-muted-foreground mt-2">Profil non complété</p>
+                    )}
+                    {Array.isArray(c.reponses_preselection) && c.reponses_preselection.length > 0 && (
+                      <div className="mt-4 rounded-xl border border-accent/15 bg-accent/5 p-4">
+                        <p className="text-xs font-semibold uppercase tracking-wide text-accent">Réponses de présélection</p>
+                        <div className="mt-3 space-y-3">
+                          {c.reponses_preselection.map((response: any, index: number) => (
+                            <div key={`${response.questionId || index}-${index}`}>
+                              <p className="text-xs font-medium text-foreground">{response.question || `Question ${index + 1}`}</p>
+                              <p className="mt-1 whitespace-pre-wrap text-xs leading-5 text-muted-foreground">{response.answer || "Aucune réponse"}</p>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
                     )}
                   </div>
                 <div className="dashboard-subcard p-4 sm:p-5">
@@ -2674,7 +3276,20 @@ const MessagerieTab = ({ user, candidatureIdFromUrl }: any) => {
   const envoyerMessage = async () => {
     if (!nouveau.trim() || !convActive) return;
     const { error } = await supabase.from("messages").insert({ expedition_id: user.id, destinataire_id: convActive.talent_id, candidature_id: convActive.id, contenu: nouveau.trim() });
-    if (!error) { setNouveau(""); chargerMessages(convActive.id); }
+    if (!error) {
+      setNouveau("");
+      chargerMessages(convActive.id);
+      try {
+        const { data: talentProfile } = await supabase
+          .from("profiles")
+          .select("email")
+          .eq("user_id", convActive.talent_id)
+          .maybeSingle();
+        if (talentProfile?.email) await emailNouveauMessage(talentProfile.email, convActive.id);
+      } catch (emailError) {
+        console.error("Erreur email message:", emailError);
+      }
+    }
   };
 
   if (loading) return <div className="text-muted-foreground">Chargement...</div>;
@@ -2810,6 +3425,7 @@ const MessagerieTab = ({ user, candidatureIdFromUrl }: any) => {
                   messages.map((m) => (
                     <div key={m.id} className={`flex ${m.expedition_id === user.id ? "justify-end" : "justify-start"}`}>
                       <div className={`max-w-[85%] rounded-2xl px-4 py-3 text-sm sm:max-w-sm ${m.expedition_id === user.id ? "bg-accent text-white shadow-[0_18px_45px_-36px_rgba(6,182,212,0.65)]" : "bg-secondary/60 border border-border/50 text-foreground"}`}>
+                        {m.automated && <p className="mb-1 text-[10px] font-semibold uppercase tracking-wide opacity-70">Message automatique</p>}
                         {m.contenu}
                         <p className="text-xs opacity-60 mt-1">{new Date(m.created_at).toLocaleTimeString("fr-FR", { hour: "2-digit", minute: "2-digit" })}</p>
                       </div>
