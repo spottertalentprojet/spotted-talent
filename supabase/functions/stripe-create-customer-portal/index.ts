@@ -17,49 +17,6 @@ const jsonResponse = (status: number, body: Record<string, unknown>) =>
     },
   });
 
-const getPortalConfigurationId = async (stripe: Stripe) => {
-  const configuredPortalId = Deno.env.get("STRIPE_PORTAL_CONFIGURATION_ID");
-  if (configuredPortalId) return configuredPortalId;
-
-  const configurations = await stripe.billingPortal.configurations.list({
-    active: true,
-    limit: 10,
-  });
-
-  const defaultConfiguration = configurations.data.find((configuration) => configuration.is_default);
-  if (defaultConfiguration) return defaultConfiguration.id;
-
-  const existingConfiguration = configurations.data[0];
-  if (existingConfiguration) return existingConfiguration.id;
-
-  const configuration = await stripe.billingPortal.configurations.create({
-    business_profile: {
-      headline: "Gestion de votre abonnement Spotted Talent",
-    },
-    features: {
-      customer_update: {
-        enabled: true,
-        allowed_updates: ["address", "email", "name", "phone", "tax_id"],
-      },
-      invoice_history: {
-        enabled: true,
-      },
-      payment_method_update: {
-        enabled: true,
-      },
-      subscription_cancel: {
-        enabled: true,
-        mode: "at_period_end",
-      },
-      subscription_update: {
-        enabled: false,
-      },
-    },
-  });
-
-  return configuration.id;
-};
-
 serve(async (req) => {
   if (req.method === "OPTIONS") {
     return new Response("ok", { headers: corsHeaders });
@@ -119,11 +76,9 @@ serve(async (req) => {
   });
 
   try {
-    const configuration = await getPortalConfigurationId(stripe);
     const portalSession = await stripe.billingPortal.sessions.create({
       customer: account.stripe_customer_id,
       return_url: returnUrl,
-      configuration,
     });
 
     return jsonResponse(200, {

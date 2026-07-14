@@ -991,7 +991,11 @@ const AbonnementEntrepriseTab = ({
       window.location.href = data.url;
     } catch (error: any) {
       console.error("stripe_portal_error", error);
-      toast.error("Portail Stripe indisponible pour le moment.");
+      const portalMessage =
+        error?.context?.message ||
+        error?.message ||
+        "Portail Stripe indisponible pour le moment.";
+      toast.error(portalMessage);
     } finally {
       setOpeningPortal(false);
     }
