@@ -211,6 +211,26 @@ const findCustomerByEmail = async (stripe: Stripe, email?: string | null, userId
   return null;
 };
 
+const findManagedSubscription = async (
+  stripe: Stripe,
+  customerId: string,
+  knownSubscription?: Stripe.Subscription | null,
+) => {
+  if (knownSubscription && ["trialing", "active", "past_due", "unpaid"].includes(knownSubscription.status)) {
+    return knownSubscription;
+  }
+
+  const subscriptions = await stripe.subscriptions.list({
+    customer: customerId,
+    status: "all",
+    limit: 10,
+  });
+
+  return subscriptions.data.find((subscription) =>
+    ["trialing", "active", "past_due", "unpaid"].includes(subscription.status),
+  ) || null;
+};
+
 serve(async (req) => {
   if (req.method === "OPTIONS") {
     return new Response("ok", { headers: corsHeaders });
@@ -286,30 +306,46 @@ serve(async (req) => {
       });
     }
 
-    if (!account?.stripe_customer_id || account.stripe_customer_id !== customerMatch.customerId) {
-      const subscription = customerMatch.subscription;
-      await supabaseAdmin.from("billing_accounts").upsert(
-        {
-          user_id: user.id,
-          stripe_customer_id: customerMatch.customerId,
-          stripe_subscription_id: customerMatch.subscriptionId || account?.stripe_subscription_id || null,
-          ...(subscription
-            ? {
-                subscription_status: mapStripeStatusToBilling(subscription.status),
-                plan_id: subscription.metadata?.plan_id || undefined,
-                billing_cycle: subscription.metadata?.billing_cycle === "yearly" ? "yearly" : undefined,
-                trial_plan_locked: subscription.metadata?.plan_id || undefined,
-                trial_ends_at: subscription.trial_end ? new Date(subscription.trial_end * 1000).toISOString() : undefined,
-                current_period_end: subscription.current_period_end
-                  ? new Date(subscription.current_period_end * 1000).toISOString()
-                  : undefined,
-              }
-            : {}),
+    const managedSubscription = await findManagedSubscription(
+      stripe,
+      customerMatch.customerId,
+      customerMatch.subscription,
+    );
+
+    if (!managedSubscription) {
+      await supabaseAdmin
+        .from("billing_accounts")
+        .update({
+          stripe_subscription_id: null,
           updated_at: new Date().toISOString(),
-        },
-        { onConflict: "user_id" },
-      );
+        })
+        .eq("user_id", user.id);
+
+      return jsonResponse(409, {
+        error: "stripe_subscription_not_found",
+        message: "Le client Stripe existe, mais aucun abonnement Stripe n'est actif. Relancez le paiement securise pour creer l'abonnement.",
+      });
     }
+
+    await supabaseAdmin.from("billing_accounts").upsert(
+      {
+        user_id: user.id,
+        stripe_customer_id: customerMatch.customerId,
+        stripe_subscription_id: managedSubscription.id,
+        subscription_status: mapStripeStatusToBilling(managedSubscription.status),
+        plan_id: managedSubscription.metadata?.plan_id || undefined,
+        billing_cycle: managedSubscription.metadata?.billing_cycle === "yearly" ? "yearly" : undefined,
+        trial_plan_locked: managedSubscription.metadata?.plan_id || undefined,
+        trial_ends_at: managedSubscription.trial_end
+          ? new Date(managedSubscription.trial_end * 1000).toISOString()
+          : undefined,
+        current_period_end: managedSubscription.current_period_end
+          ? new Date(managedSubscription.current_period_end * 1000).toISOString()
+          : undefined,
+        updated_at: new Date().toISOString(),
+      },
+      { onConflict: "user_id" },
+    );
 
     const configuration = await getPortalConfigurationId(stripe);
     const portalSession = await stripe.billingPortal.sessions.create({

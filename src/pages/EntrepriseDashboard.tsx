@@ -985,7 +985,7 @@ const AbonnementEntrepriseTab = ({
     }
   };
 
-  const ouvrirPortailStripe = async () => {
+  const ouvrirPortailStripe = async (fallbackPlanId?: BillingPlanId) => {
     setOpeningPortal(true);
     try {
       const { data, error } = await supabase.functions.invoke("stripe-create-customer-portal", {
@@ -994,6 +994,13 @@ const AbonnementEntrepriseTab = ({
         },
       });
       if (error) {
+        const payload = await readFunctionErrorPayload(error, data);
+        if (payload?.error === "stripe_subscription_not_found") {
+          setOpeningPortal(false);
+          toast.message("Aucun abonnement Stripe actif. Ouverture du paiement sécurisé.");
+          await demarrerCheckoutStripe(fallbackPlanId || billingState.plan);
+          return;
+        }
         throw new Error(await readFunctionErrorMessage(error, data, "Portail Stripe indisponible pour le moment."));
       }
       if (!data?.url || typeof data.url !== "string") {
@@ -1293,7 +1300,7 @@ const AbonnementEntrepriseTab = ({
                   variant={currentSubscription ? "secondary" : "glow"}
                   className="w-full"
                   disabled={checkoutLoading || openingPortal}
-                  onClick={() => hasManagedStripeSubscription ? ouvrirPortailStripe() : demarrerCheckoutStripe(plan.id)}
+                  onClick={() => hasManagedStripeSubscription ? ouvrirPortailStripe(plan.id) : demarrerCheckoutStripe(plan.id)}
                 >
                   {checkoutLoading
                     ? "Ouverture du paiement..."
@@ -1520,7 +1527,7 @@ const AbonnementEntrepriseTab = ({
             <Button variant="ghost-glow" onClick={enregistrerFacturation}>
               Enregistrer la fiche B2B
             </Button>
-            <Button variant="secondary" onClick={ouvrirPortailStripe} disabled={openingPortal}>
+            <Button variant="secondary" onClick={() => ouvrirPortailStripe(selectedPlanId)} disabled={openingPortal}>
               {openingPortal ? "Ouverture..." : "Portail facturation Stripe"}
             </Button>
           </div>
