@@ -132,13 +132,10 @@ const TalentProfil = () => {
       </nav>
 
       <main className="mx-auto max-w-5xl px-4 pb-16 pt-24 sm:px-6">
-        <div className="dashboard-hero-card relative mb-6 overflow-hidden">
-          <div className="absolute -right-8 top-0 h-32 w-32 rounded-full bg-primary/12 blur-3xl" />
-          <div className="absolute -left-10 bottom-0 h-28 w-28 rounded-full bg-accent/12 blur-3xl" />
-
-          <div className="relative flex flex-col gap-6 lg:flex-row lg:items-start">
-            <div className="flex flex-col items-center gap-3 lg:w-48 lg:items-start">
-              <div className="flex h-28 w-28 items-center justify-center overflow-hidden rounded-full border-2 border-primary/35 bg-primary/14 shadow-[0_18px_40px_-28px_hsl(var(--primary)/0.8)]">
+        <div className="dashboard-hero-card mb-6 overflow-hidden p-5 sm:p-6">
+          <div className="flex flex-col gap-5 lg:flex-row lg:items-center lg:justify-between">
+            <div className="flex min-w-0 flex-col gap-4 sm:flex-row sm:items-center">
+              <div className="flex h-20 w-20 shrink-0 items-center justify-center overflow-hidden rounded-2xl border border-primary/25 bg-primary/10 shadow-[0_16px_34px_-28px_hsl(var(--primary)/0.8)] sm:h-24 sm:w-24">
                 {avatarUrl ? (
                   <img
                     src={avatarUrl}
@@ -147,24 +144,22 @@ const TalentProfil = () => {
                     onError={() => setAvatarUrl(null)}
                   />
                 ) : (
-                  <User className="h-14 w-14 text-primary/60" />
+                  <User className="h-10 w-10 text-primary/65 sm:h-12 sm:w-12" />
                 )}
               </div>
-              <span className="rounded-full border border-primary/20 bg-primary/10 px-3 py-1 text-xs font-semibold uppercase tracking-[0.24em] text-primary/85">
-                Profil candidat
-              </span>
-            </div>
 
-            <div className="flex-1 space-y-5">
-              <div className="space-y-2">
-                <h1 className="text-3xl font-bold tracking-tight text-foreground">{profil.full_name || "Talent"}</h1>
+              <div className="min-w-0">
+                <span className="inline-flex rounded-full border border-primary/20 bg-primary/10 px-3 py-1 text-[11px] font-semibold uppercase tracking-[0.18em] text-primary/85">
+                  Profil candidat
+                </span>
+                <h1 className="mt-3 truncate text-3xl font-bold tracking-tight text-foreground sm:text-4xl">{profil.full_name || "Talent"}</h1>
                 {profil.poste && (
-                  <p className="flex items-center gap-2 text-base font-medium text-primary">
+                  <p className="mt-2 flex items-center gap-2 text-base font-medium text-primary">
                     <Briefcase className="h-4 w-4" /> {profil.poste}
                   </p>
                 )}
 
-                <div className="flex flex-wrap gap-2 text-sm text-muted-foreground">
+                <div className="mt-4 flex flex-wrap gap-2 text-sm text-muted-foreground">
                   {profil.localisation && (
                     <span className="rounded-full border border-border/70 bg-secondary/40 px-3 py-1.5">
                       <span className="inline-flex items-center gap-2">
@@ -192,18 +187,21 @@ const TalentProfil = () => {
                 </div>
               </div>
 
-              <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
+            </div>
+
+            <div className="grid gap-2 text-sm lg:min-w-[340px] lg:max-w-[430px]">
                 {profil.email && (
-                  <div className="dashboard-subcard space-y-2">
-                    <span className="flex items-center gap-2 text-xs font-semibold uppercase tracking-[0.2em] text-muted-foreground">
-                      <Mail className="h-3.5 w-3.5 text-primary" /> Email
-                    </span>
-                    <p className="break-all text-sm font-medium text-foreground">{profil.email}</p>
+                  <div className="flex min-w-0 items-start gap-3 rounded-xl border border-border/70 bg-secondary/35 px-3 py-2.5">
+                    <Mail className="mt-0.5 h-4 w-4 shrink-0 text-primary" />
+                    <div className="min-w-0">
+                      <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-muted-foreground">Email</p>
+                      <p className="break-all text-sm font-semibold text-foreground">{profil.email}</p>
+                    </div>
                   </div>
                 )}
 
                 {profil.telephone && (
-                  <div className="dashboard-subcard space-y-2">
+                  <div className="flex min-w-0 flex-col gap-1 rounded-xl border border-border/70 bg-secondary/35 px-3 py-2.5">
                     <span className="flex items-center gap-2 text-xs font-semibold uppercase tracking-[0.2em] text-muted-foreground">
                       <Phone className="h-3.5 w-3.5 text-primary" /> Téléphone
                     </span>
@@ -213,7 +211,7 @@ const TalentProfil = () => {
                 )}
 
                 {profil.adresse && (
-                  <div className="dashboard-subcard space-y-2 md:col-span-2">
+                  <div className="flex min-w-0 flex-col gap-1 rounded-xl border border-border/70 bg-secondary/35 px-3 py-2.5">
                     <span className="flex items-center gap-2 text-xs font-semibold uppercase tracking-[0.2em] text-muted-foreground">
                       <Home className="h-3.5 w-3.5 text-primary" /> Adresse
                     </span>
@@ -221,7 +219,6 @@ const TalentProfil = () => {
                   </div>
                 )}
               </div>
-            </div>
           </div>
         </div>
 
