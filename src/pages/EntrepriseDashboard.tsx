@@ -1,4 +1,4 @@
-import { emailCandidatureStatut, emailNouveauMessage, emailOffrePubliee } from "@/lib/emails";
+﻿import { emailCandidatureStatut, emailNouveauMessage, emailOffrePubliee } from "@/lib/emails";
 import { useAuth } from "@/contexts/AuthContext";
 import { useNavigate } from "react-router-dom";
 import { Button } from "@/components/ui/button";
@@ -2648,27 +2648,27 @@ const MesOffresTab = ({ user, entitlements, refreshToken = 0, onOffresChanged }:
 
   return (
     <div className="space-y-6">
-      <div className="dashboard-panel p-6 sm:p-7">
-        <div className="grid gap-6 lg:grid-cols-[1.2fr_0.8fr] lg:items-center">
+      <div className="dashboard-panel p-4 sm:p-5">
+        <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_300px] lg:items-center">
           <div>
-            <div className="mb-3 inline-flex items-center gap-2 rounded-full border border-accent/20 bg-accent/10 px-3 py-1 text-[11px] font-semibold uppercase tracking-[0.24em] text-accent">
+            <div className="mb-2 inline-flex items-center gap-2 rounded-full border border-accent/20 bg-accent/10 px-2.5 py-0.5 text-[10px] font-semibold uppercase tracking-[0.16em] text-accent">
               <Wand2 className="h-3.5 w-3.5" />
               Vos annonces publiées
             </div>
-            <h2 className="text-2xl font-bold sm:text-3xl">Mes offres</h2>
-            <p className="mt-2 max-w-2xl text-sm leading-6 text-muted-foreground sm:text-base">
+            <h2 className="text-xl font-bold sm:text-2xl">Mes offres</h2>
+            <p className="mt-1 max-w-2xl text-xs leading-5 text-muted-foreground sm:text-sm">
               Retrouvez toutes vos annonces dans un seul espace, gardez un œil sur leur visibilité
               et reprenez une offre en un instant pour la corriger, la masquer ou la rouvrir.
             </p>
           </div>
-          <div className="dashboard-subcard p-5">
+          <div className="dashboard-subcard p-3">
             <p className="text-xs font-semibold uppercase tracking-[0.24em] text-accent">Vue rapide</p>
-            <p className="mt-3 text-lg font-semibold text-foreground">
+            <p className="mt-2 text-base font-semibold text-foreground">
               {stats.actives > 0
                 ? `${stats.actives} offre${stats.actives > 1 ? "s" : ""} active${stats.actives > 1 ? "s" : ""}`
                 : "Aucune offre active pour le moment"}
             </p>
-            <p className="mt-2 text-sm leading-6 text-muted-foreground">
+            <p className="mt-1 text-xs leading-5 text-muted-foreground">
               {stats.urgentes > 0
                 ? `${stats.urgentes} annonce${stats.urgentes > 1 ? "s" : ""} est marquée${stats.urgentes > 1 ? "s" : ""} comme urgente${stats.urgentes > 1 ? "s" : ""}.`
                 : "Toutes vos annonces restent accessibles ici, même lorsqu'elles sont mises en pause."}
@@ -2677,59 +2677,59 @@ const MesOffresTab = ({ user, entitlements, refreshToken = 0, onOffresChanged }:
         </div>
       </div>
 
-      <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
-        <div className="dashboard-stat-card border border-accent/20 bg-accent/10 p-4">
+      <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+        <div className="dashboard-stat-card border border-accent/20 bg-accent/10 p-3">
           <p className="text-xs font-semibold uppercase tracking-wide text-accent">Total</p>
-          <p className="mt-2 text-3xl font-bold">{stats.total}</p>
+          <p className="mt-1 text-2xl font-bold">{stats.total}</p>
           <p className="mt-1 text-xs text-muted-foreground">Toutes vos annonces enregistrées.</p>
         </div>
-        <div className="dashboard-stat-card border border-green-500/20 bg-green-500/10 p-4">
+        <div className="dashboard-stat-card border border-green-500/20 bg-green-500/10 p-3">
           <p className="text-xs font-semibold uppercase tracking-wide text-green-300">Actives</p>
-          <p className="mt-2 text-3xl font-bold text-green-300">{stats.actives}</p>
+          <p className="mt-1 text-2xl font-bold text-green-300">{stats.actives}</p>
           <p className="mt-1 text-xs text-muted-foreground">Annonces visibles par les talents.</p>
         </div>
-        <div className="dashboard-stat-card border border-secondary/60 bg-secondary/40 p-4">
+        <div className="dashboard-stat-card border border-secondary/60 bg-secondary/40 p-3">
           <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">En pause</p>
-          <p className="mt-2 text-3xl font-bold">{stats.inactives}</p>
+          <p className="mt-1 text-2xl font-bold">{stats.inactives}</p>
           <p className="mt-1 text-xs text-muted-foreground">Offres temporairement masquées.</p>
         </div>
-        <div className="dashboard-stat-card border border-red-500/20 bg-red-500/10 p-4">
+        <div className="dashboard-stat-card border border-red-500/20 bg-red-500/10 p-3">
           <p className="text-xs font-semibold uppercase tracking-wide text-red-300">Urgentes</p>
-          <p className="mt-2 text-3xl font-bold text-red-300">{stats.urgentes}</p>
+          <p className="mt-1 text-2xl font-bold text-red-300">{stats.urgentes}</p>
           <p className="mt-1 text-xs text-muted-foreground">Annonces marquées prioritaires.</p>
         </div>
       </div>
 
       {offres.length === 0 ? (
-        <div className="dashboard-empty-card p-12"><Wand2 className="w-16 h-16 text-accent/30 mb-4" /><h3 className="font-bold text-lg mb-2">Aucune offre publiée</h3><p className="text-muted-foreground text-sm">Créez votre première offre avec l'IA.</p></div>
+        <div className="dashboard-empty-card p-12"><Wand2 className="w-16 h-16 text-accent/30 mb-4" /><h3 className="font-bold text-base mb-2">Aucune offre publiée</h3><p className="text-muted-foreground text-sm">Créez votre première offre avec l'IA.</p></div>
       ) : (
         <div className="space-y-4">
           {offres.map((offre) => (
-            <div key={offre.id} className="dashboard-panel p-5 sm:p-6">
-              <div className="grid gap-4 xl:grid-cols-[1.35fr_0.65fr] xl:items-start">
+            <div key={offre.id} className="dashboard-panel p-3 sm:p-4">
+              <div className="grid gap-3 xl:grid-cols-[minmax(0,1fr)_300px] xl:items-start">
                 <div>
                   <div className="flex items-center gap-3 mb-2 flex-wrap">
-                    <h3 className="font-bold text-lg">{offre.titre}</h3>
+                    <h3 className="font-bold text-base">{offre.titre}</h3>
                     {offre.urgent && <span className="text-xs px-2 py-0.5 rounded-full bg-red-500 text-white font-bold animate-pulse">URGENT</span>}
                     <span className={`text-xs px-2 py-0.5 rounded-full border ${offre.statut === "active" ? "bg-green-500/10 text-green-400 border-green-500/20" : "bg-secondary text-muted-foreground border-border"}`}>{offre.statut === "active" ? "Active" : "Inactive"}</span>
                     <span className="text-xs px-2 py-0.5 rounded-full bg-accent/10 text-accent border border-accent/20">{formatDisplayLabel(offre.contrat)}</span>
                   </div>
-                  <div className="flex gap-4 text-sm text-muted-foreground mb-2 flex-wrap">
+                  <div className="flex gap-3 text-xs text-muted-foreground mb-1.5 flex-wrap">
                     <span className="flex items-center gap-1"><MapPin className="w-3 h-3" /> {offre.localisation || "Non précisée"}</span>
                     {offre.salaire_min && offre.salaire_max && <span className="flex items-center gap-1"><Euro className="w-3 h-3" /> {offre.salaire_min} - {offre.salaire_max}</span>}
                     {offre.diplome && !["Sans diplome", "Sans diplôme"].includes(offre.diplome) && <span className="flex items-center gap-1"><GraduationCap className="w-3 h-3" /> {formatDisplayLabel(offre.diplome)}</span>}
                     <span className="flex items-center gap-1"><Calendar className="w-3 h-3" /> {new Date(offre.created_at).toLocaleDateString("fr-FR")}</span>
                   </div>
                   {offre.avantages && <p className="text-xs text-green-400 mb-2 flex items-center gap-1"><CheckCircle className="w-3 h-3" /> {formatDisplayList(offre.avantages)}</p>}
-                  {offreEnEdition !== offre.id && <p className="text-sm text-muted-foreground line-clamp-2">{descriptionCourte(offre.description)}</p>}
+                  {offreEnEdition !== offre.id && <p className="text-xs leading-5 text-muted-foreground line-clamp-2">{descriptionCourte(offre.description)}</p>}
                 </div>
 
-                <div className="dashboard-subcard p-4 sm:p-5">
+                <div className="dashboard-subcard p-3 sm:p-5">
                   <p className="text-[11px] font-semibold uppercase tracking-[0.24em] text-accent">Gestion de l'annonce</p>
                   <p className="mt-3 text-sm font-semibold text-foreground">
                     {offre.statut === "active" ? "Visible pour les talents" : "Annonce en pause"}
                   </p>
-                  <p className="mt-2 text-sm leading-6 text-muted-foreground">
+                  <p className="mt-1 text-xs leading-5 text-muted-foreground">
                     {offre.statut === "active"
                       ? "Cette offre peut recevoir de nouvelles candidatures. Vous pouvez l'éditer, l'ouvrir en détail ou la mettre en pause."
                       : "Cette offre reste enregistrée dans votre espace, mais elle n'apparaît plus aux talents tant que vous ne la réactivez pas."}
@@ -2738,12 +2738,12 @@ const MesOffresTab = ({ user, entitlements, refreshToken = 0, onOffresChanged }:
                     {offreEnEdition !== offre.id && (
                       <button
                         onClick={() => setOffreOuverte(offreOuverte === offre.id ? null : offre.id)}
-                        className="dashboard-inline-link justify-center rounded-xl border border-accent/20 bg-accent/10 px-3 py-2"
+                        className="dashboard-inline-link justify-center rounded-lg border border-accent/20 bg-accent/10 px-2.5 py-1.5 text-xs"
                       >
                         {offreOuverte === offre.id ? "Réduire la fiche" : "Voir l'offre complète"}
                       </button>
                     )}
-                    <div className="grid gap-2 sm:grid-cols-3 xl:grid-cols-1">
+                    <div className="grid gap-1.5 sm:grid-cols-3 xl:grid-cols-1">
                       <Button
                         variant="ghost-glow"
                         size="sm"
@@ -2751,12 +2751,12 @@ const MesOffresTab = ({ user, entitlements, refreshToken = 0, onOffresChanged }:
                           setOffreOuverte(null);
                           setOffreEnEdition(offreEnEdition === offre.id ? null : offre.id);
                         }}
-                        className={`justify-center ${offreEnEdition === offre.id ? "text-accent border-accent/40" : ""}`}
+                        className={`h-7 justify-center text-xs ${offreEnEdition === offre.id ? "text-accent border-accent/40" : ""}`}
                       >
                         <Pencil className="mr-1 h-4 w-4" />
                         {offreEnEdition === offre.id ? "Fermer l'édition" : "Modifier"}
                       </Button>
-                      <Button variant="ghost-glow" size="sm" onClick={() => toggleStatut(offre.id, offre.statut)} className="justify-center">
+                      <Button variant="ghost-glow" size="sm" onClick={() => toggleStatut(offre.id, offre.statut)} className="h-7 justify-center text-xs">
                         {offre.statut === "active" ? <EyeOff className="mr-1 h-4 w-4" /> : <Eye className="mr-1 h-4 w-4" />}
                         {offre.statut === "active" ? "Mettre en pause" : "Réactiver"}
                       </Button>
@@ -2765,7 +2765,7 @@ const MesOffresTab = ({ user, entitlements, refreshToken = 0, onOffresChanged }:
                         description="L'annonce sera retirée de vos offres et ne sera plus visible pour les candidats. Vous pouvez encore annuler maintenant."
                         onConfirm={() => supprimerOffre(offre.id)}
                       >
-                        <button className="flex items-center justify-center gap-1 rounded-xl border border-red-500/20 px-3 py-2 text-xs text-red-400 transition-colors hover:border-red-400/40 hover:text-red-300">
+                        <button className="flex items-center justify-center gap-1 rounded-lg border border-red-500/20 px-2.5 py-1.5 text-xs text-red-400 transition-colors hover:border-red-400/40 hover:text-red-300">
                           <Trash2 className="h-4 w-4" />
                           Supprimer
                         </button>
@@ -2786,31 +2786,31 @@ const MesOffresTab = ({ user, entitlements, refreshToken = 0, onOffresChanged }:
               )}
 
               {offreOuverte === offre.id && offreEnEdition !== offre.id && (
-                <div className="mt-5 rounded-2xl border border-accent/15 bg-secondary/20 p-5">
+                <div className="mt-3 rounded-xl border border-accent/15 bg-secondary/20 p-3">
                   <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
-                    <div className="dashboard-subcard p-4">
+                    <div className="dashboard-subcard p-3">
                       <p className="text-xs uppercase tracking-wide text-muted-foreground">Contrat</p>
                       <p className="mt-2 font-semibold">{formatDisplayLabel(offre.contrat) || "Non précisé"}</p>
                     </div>
-                    <div className="dashboard-subcard p-4">
+                    <div className="dashboard-subcard p-3">
                       <p className="text-xs uppercase tracking-wide text-muted-foreground">Secteur</p>
                       <p className="mt-2 font-semibold">{formatDisplayLabel(offre.secteur) || "Non précisé"}</p>
                     </div>
-                    <div className="dashboard-subcard p-4">
+                    <div className="dashboard-subcard p-3">
                       <p className="text-xs uppercase tracking-wide text-muted-foreground">Salaire</p>
                       <p className="mt-2 font-semibold">
                         {offre.salaire_min && offre.salaire_max ? `${offre.salaire_min} - ${offre.salaire_max}` : "Non précisé"}
                       </p>
                     </div>
-                    <div className="dashboard-subcard p-4">
+                    <div className="dashboard-subcard p-3">
                       <p className="text-xs uppercase tracking-wide text-muted-foreground">Permis requis</p>
                       <p className="mt-2 font-semibold">{formatDisplayList(offre.permis_requis) || "Aucun"}</p>
                     </div>
                   </div>
 
-                  <div className="dashboard-subcard mt-4 p-4">
+                  <div className="dashboard-subcard mt-3 p-3">
                     <p className="text-sm font-semibold">Description complète</p>
-                    <div className="mt-3 whitespace-pre-wrap text-sm leading-relaxed text-muted-foreground">
+                    <div className="mt-2 whitespace-pre-wrap text-xs leading-5 text-muted-foreground">
                       {formatterDescriptionOffre(offre.description) || "Aucune description renseignée."}
                     </div>
                   </div>
@@ -2985,7 +2985,7 @@ const CandidatsTab = ({
       <div className="dashboard-panel p-6 sm:p-7">
         <div className="grid gap-6 lg:grid-cols-[1.15fr_0.85fr] lg:items-center">
           <div>
-            <div className="mb-3 inline-flex items-center gap-2 rounded-full border border-accent/20 bg-accent/10 px-3 py-1 text-[11px] font-semibold uppercase tracking-[0.24em] text-accent">
+            <div className="mb-3 inline-flex items-center gap-2 rounded-full border border-accent/20 bg-accent/10 px-3 py-1 text-[10px] font-semibold uppercase tracking-[0.16em] text-accent">
               <Users className="h-3.5 w-3.5" />
               Pilotage des candidatures
             </div>
@@ -3013,7 +3013,7 @@ const CandidatsTab = ({
                 ? `${counts.envoyee} candidature${counts.envoyee > 1 ? "s" : ""} à traiter`
                 : "Aucune candidature en attente"}
             </p>
-            <p className="mt-2 text-sm leading-6 text-muted-foreground">
+            <p className="mt-1 text-xs leading-4 text-muted-foreground line-clamp-2">
               {counts.acceptee > 0
                 ? `${counts.acceptee} dossier${counts.acceptee > 1 ? "s" : ""} est déjà accepté${counts.acceptee > 1 ? "s" : ""}, avec un taux d'acceptation de ${tauxAcceptation}%.`
                 : "Dès qu'un candidat avance, vous gardez ici une vue claire sur le statut, la note et les prochaines actions."}
@@ -3111,8 +3111,8 @@ const CandidatsTab = ({
       ) : (
         <div className="space-y-4">
           {candidaturesFiltrees.map((c) => (
-            <div key={c.id} className={`dashboard-panel p-5 sm:p-6 ${c.statut === "acceptee" ? "border-green-500/25" : c.statut === "entretien" ? "border-blue-500/25" : ""}`}>
-              <div className="grid gap-4 xl:grid-cols-[1.2fr_0.8fr] xl:items-start">
+            <div key={c.id} className={`dashboard-panel p-3 sm:p-4 ${c.statut === "acceptee" ? "border-green-500/25" : c.statut === "entretien" ? "border-blue-500/25" : ""}`}>
+              <div className="grid gap-3 xl:grid-cols-[minmax(0,1fr)_300px] xl:items-start">
                 <div>
                   <div className="flex items-center gap-3 mb-2 flex-wrap">
                     <h3 className="font-bold">{c.offre?.titre || "Offre"}</h3>
@@ -3139,20 +3139,20 @@ const CandidatsTab = ({
                       </span>
                     )}
                   </div>
-                  <div className="flex gap-4 text-sm text-muted-foreground mb-2">
+                  <div className="flex gap-3 text-xs text-muted-foreground mb-1.5 flex-wrap">
                     <span className="flex items-center gap-1"><FileText className="w-3 h-3" /> {formatDisplayLabel(c.offre?.contrat)}</span>
                     <span className="flex items-center gap-1"><MapPin className="w-3 h-3" /> {c.offre?.localisation || "Non précisée"}</span>
                     <span className="flex items-center gap-1"><Calendar className="w-3 h-3" /> {new Date(c.created_at).toLocaleDateString("fr-FR")}</span>
                   </div>
                   {c.talentProfil ? (
-                    <div className="mt-3 space-y-2 rounded-lg border border-border/50 bg-secondary/50 p-3">
+                    <div className="mt-2 space-y-1.5 rounded-lg border border-border/50 bg-secondary/50 p-2">
                       <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
                         <div className="flex items-center gap-3">
-                          <div className="w-12 h-12 rounded-full bg-accent/20 border-2 border-accent/30 flex items-center justify-center overflow-hidden flex-shrink-0">
+                          <div className="w-9 h-9 rounded-full bg-accent/20 border border-accent/30 flex items-center justify-center overflow-hidden flex-shrink-0">
                             {c.talentAvatarUrl ? (
                               <img src={c.talentAvatarUrl} alt="photo talent" className="w-full h-full object-cover" onError={(e) => { (e.target as HTMLImageElement).style.display = "none"; }} />
                             ) : (
-                              <Users className="w-6 h-6 text-accent/60" />
+                              <Users className="w-4 h-4 text-accent/60" />
                             )}
                           </div>
                           <div>
@@ -3169,7 +3169,7 @@ const CandidatsTab = ({
                             });
                             navigate(`/talent/profil/${c.talent_id}?${params.toString()}`);
                           }}
-                          className="dashboard-action-link self-start sm:self-auto"
+                          className="dashboard-action-link self-start px-2.5 py-1 text-[10px] sm:self-auto"
                         >
                           Voir le profil complet
                         </button>
@@ -3199,9 +3199,9 @@ const CandidatsTab = ({
                       <p className="text-xs text-muted-foreground mt-2">Profil non complété</p>
                     )}
                     {Array.isArray(c.reponses_preselection) && c.reponses_preselection.length > 0 && (
-                      <div className="mt-4 rounded-xl border border-accent/15 bg-accent/5 p-4">
+                      <div className="mt-2 rounded-lg border border-accent/15 bg-accent/5 p-3">
                         <p className="text-xs font-semibold uppercase tracking-wide text-accent">Réponses de présélection</p>
-                        <div className="mt-3 space-y-3">
+                        <div className="mt-2 space-y-2">
                           {c.reponses_preselection.map((response: any, index: number) => (
                             <div key={`${response.questionId || index}-${index}`}>
                               <p className="text-xs font-medium text-foreground">{response.question || `Question ${index + 1}`}</p>
@@ -3212,10 +3212,10 @@ const CandidatsTab = ({
                       </div>
                     )}
                   </div>
-                <div className="dashboard-subcard p-4 sm:p-5">
-                  <p className="text-[11px] font-semibold uppercase tracking-[0.24em] text-accent">Décision et suivi</p>
-                  <p className="mt-3 text-sm font-semibold text-foreground">{getDisplayCandidatureStatus(c.statut)}</p>
-                  <p className="mt-2 text-sm leading-6 text-muted-foreground">
+                <div className="dashboard-subcard p-2.5 sm:p-3">
+                  <p className="text-[10px] font-semibold uppercase tracking-[0.16em] text-accent">Décision et suivi</p>
+                  <p className="mt-1.5 text-sm font-semibold text-foreground">{getDisplayCandidatureStatus(c.statut)}</p>
+                  <p className="mt-1 text-xs leading-4 text-muted-foreground line-clamp-2">
                     {c.statut === "acceptee"
                       ? "Le dossier est validé. Les documents liés à cette candidature deviennent votre zone de suivi principale."
                       : c.statut === "entretien"
@@ -3224,25 +3224,25 @@ const CandidatsTab = ({
                           ? "La candidature est clôturée. Vous pouvez la remettre en attente si vous souhaitez réouvrir le dossier."
                           : "Ce dossier attend votre premier retour. Vous pouvez le faire avancer en un clic."}
                   </p>
-                  <div className="mt-4 flex flex-col gap-2">
+                  <div className="mt-2 flex flex-col gap-1">
                     {c.statut === "envoyee" && (
-                      <Button variant="ghost-glow" size="sm" className="w-full justify-center text-blue-400 border-blue-500/30 hover:bg-blue-500/10" onClick={() => changerStatut(c.id, "entretien")}>En entretien</Button>
+                      <Button variant="ghost-glow" size="sm" className="h-7 w-full justify-center text-xs text-blue-400 border-blue-500/30 hover:bg-blue-500/10" onClick={() => changerStatut(c.id, "entretien")}>En entretien</Button>
                     )}
                     {(c.statut === "envoyee" || c.statut === "entretien") && (
-                      <Button variant="glow" size="sm" className="w-full justify-center" onClick={() => changerStatut(c.id, "acceptee")}><Check className="w-3 h-3 mr-1" /> Accepter</Button>
+                      <Button variant="glow" size="sm" className="h-7 w-full justify-center text-xs" onClick={() => changerStatut(c.id, "acceptee")}><Check className="w-3 h-3 mr-1" /> Accepter</Button>
                     )}
                     {(c.statut === "envoyee" || c.statut === "entretien") && (
-                      <Button variant="ghost-glow" size="sm" className="w-full justify-center" onClick={() => changerStatut(c.id, "refusee")}><X className="w-3 h-3 mr-1" /> Refuser</Button>
+                      <Button variant="ghost-glow" size="sm" className="h-7 w-full justify-center text-xs" onClick={() => changerStatut(c.id, "refusee")}><X className="w-3 h-3 mr-1" /> Refuser</Button>
                     )}
                     {(c.statut === "acceptee" || c.statut === "refusee" || c.statut === "entretien") && (
-                      <Button variant="ghost-glow" size="sm" className="w-full justify-center text-xs" onClick={() => changerStatut(c.id, "envoyee")}>Remettre en attente</Button>
+                      <Button variant="ghost-glow" size="sm" className="h-7 w-full justify-center text-xs" onClick={() => changerStatut(c.id, "envoyee")}>Remettre en attente</Button>
                     )}
                   </div>
-                  <div className="mt-4 rounded-xl border border-border/60 bg-secondary/20 px-3 py-3">
-                    <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Note interne</p>
-                    <div className="mt-2 flex gap-0.5">
+                  <div className="mt-2 rounded-lg border border-border/60 bg-secondary/20 px-2.5 py-2">
+                    <p className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">Note interne</p>
+                    <div className="mt-1 flex gap-0.5">
                       {[1,2,3,4,5].map((etoile) => (
-                        <button key={etoile} onClick={() => noterTalent(c.id, etoile)} className={`text-xl transition-colors ${c.note >= etoile ? "text-amber-400" : "text-muted-foreground hover:text-amber-300"}`}>★</button>
+                        <button key={etoile} onClick={() => noterTalent(c.id, etoile)} className={`text-base leading-none transition-colors ${c.note >= etoile ? "text-amber-400" : "text-muted-foreground hover:text-amber-300"}`}>★</button>
                       ))}
                     </div>
                     <p className="mt-1 text-xs text-amber-400">{c.note ? `${c.note}/5` : "Pas encore noté"}</p>
@@ -4114,3 +4114,4 @@ const DocumentsEntrepriseTab = () => {
 };
 
 export default EntrepriseDashboard;
+
