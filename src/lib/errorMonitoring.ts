@@ -5,6 +5,7 @@ type ClientErrorArea =
   | "window_error"
   | "unhandled_rejection"
   | "resource_load"
+  | "auth_initialization"
   | "account_deletion";
 
 type ClientErrorSeverity = "warning" | "error" | "fatal";

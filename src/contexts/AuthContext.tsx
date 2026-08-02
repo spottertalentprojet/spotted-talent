@@ -5,6 +5,7 @@ import { supabase } from "@/integrations/supabase/client";
 import { Tables } from "@/integrations/supabase/types";
 import MfaChallengeGate from "@/components/MfaChallengeGate";
 import { isEmailConfirmed } from "@/lib/authSecurity";
+import { reportClientError } from "@/lib/errorMonitoring";
 
 type Profile = Tables<"profiles">;
 
@@ -123,19 +124,35 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
   };
 
   useEffect(() => {
+    let active = true;
+    const loadingSafetyTimeout = window.setTimeout(() => {
+      if (active) setLoading(false);
+    }, 10_000);
+
     const { data: { subscription } } = supabase.auth.onAuthStateChange(
       (_event, session) => {
         setTimeout(() => {
-          void loadSession(session, _event === "SIGNED_IN");
+          if (active) void loadSession(session, _event === "SIGNED_IN");
         }, 0);
       }
     );
 
-    supabase.auth.getSession().then(({ data: { session } }) => {
-      void loadSession(session, false);
-    });
+    void supabase.auth.getSession()
+      .then(({ data: { session }, error }) => {
+        if (error) throw error;
+        if (active) void loadSession(session, false);
+      })
+      .catch((error: unknown) => {
+        console.error("Erreur initialisation session:", error);
+        void reportClientError("auth_initialization", error);
+        if (active) setLoading(false);
+      });
 
-    return () => subscription.unsubscribe();
+    return () => {
+      active = false;
+      window.clearTimeout(loadingSafetyTimeout);
+      subscription.unsubscribe();
+    };
   }, []);
 
   const signOut = async () => {
