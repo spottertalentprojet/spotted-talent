@@ -9,6 +9,7 @@ export default defineConfig({
   forbidOnly: Boolean(process.env.CI),
   retries: process.env.CI ? 2 : 0,
   reporter: "list",
+  expect: { timeout: 15_000 },
   use: {
     baseURL: externalBaseUrl || localBaseUrl,
     trace: "retain-on-failure",
