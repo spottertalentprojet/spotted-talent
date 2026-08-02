@@ -2117,7 +2117,7 @@ const ProfileTab = ({ profile, user, avatarUrl, setAvatarUrl }: any) => {
       </div>
 
       <div className="talent-profile-preview-only mt-2">
-        <AccountSecurityPanel user={user} />
+        <AccountSecurityPanel user={user} role="talent" />
       </div>
     </div>
   );

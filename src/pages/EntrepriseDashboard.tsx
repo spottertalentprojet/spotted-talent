@@ -2048,7 +2048,7 @@ const ProfilEntrepriseTab = ({ profile, user, avatarUrl, setAvatarUrl, coverUrl,
 
   return (
     <div className="space-y-6">
-      <AccountSecurityPanel user={user} />
+      <AccountSecurityPanel user={user} role="entreprise" />
       <div className="dashboard-panel p-6 sm:p-7">
         <div className="grid gap-6 lg:grid-cols-[1.15fr_0.85fr] lg:items-center">
           <div>

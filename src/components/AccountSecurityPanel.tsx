@@ -1,10 +1,27 @@
 import { useEffect, useMemo, useState } from "react";
 import type { User } from "@supabase/supabase-js";
-import { CheckCircle, KeyRound, MailCheck, RefreshCw, ShieldCheck, Smartphone, Trash2 } from "lucide-react";
+import { AlertTriangle, CheckCircle, KeyRound, MailCheck, RefreshCw, ShieldCheck, Smartphone, Trash2 } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+  AlertDialogTrigger,
+} from "@/components/ui/alert-dialog";
 import { supabase } from "@/integrations/supabase/client";
+import {
+  ACCOUNT_DELETION_CONFIRMATION,
+  clearAccountLocalState,
+  isAccountDeletionConfirmed,
+} from "@/lib/accountDeletion";
+import { reportClientError } from "@/lib/errorMonitoring";
 import { translateAuthError } from "@/lib/authMessages";
 
 type TotpFactor = {
@@ -70,13 +87,38 @@ const extractTotpFactors = (data: unknown): TotpFactor[] => {
     });
 };
 
-const AccountSecurityPanel = ({ user }: { user: User }) => {
+const readFunctionErrorMessage = async (error: unknown, fallback: string) => {
+  if (typeof error === "object" && error && "context" in error) {
+    const context = (error as { context?: unknown }).context;
+    if (context instanceof Response) {
+      try {
+        const payload = await context.clone().json() as { message?: unknown };
+        if (typeof payload.message === "string" && payload.message.trim()) return payload.message;
+      } catch {
+        // Le message générique ci-dessous reste volontairement sans détail technique.
+      }
+    }
+  }
+
+  return getErrorMessage(error, fallback);
+};
+
+const AccountSecurityPanel = ({
+  user,
+  role,
+}: {
+  user: User;
+  role?: "talent" | "entreprise";
+}) => {
   const [loadingFactors, setLoadingFactors] = useState(false);
   const [enrolling, setEnrolling] = useState(false);
   const [verifying, setVerifying] = useState(false);
   const [verifiedFactors, setVerifiedFactors] = useState<TotpFactor[]>([]);
   const [enrollment, setEnrollment] = useState<EnrollmentState | null>(null);
   const [code, setCode] = useState("");
+  const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
+  const [deleteConfirmation, setDeleteConfirmation] = useState("");
+  const [deletingAccount, setDeletingAccount] = useState(false);
 
   const confirmedEmail = useMemo(() => emailIsConfirmed(user), [user]);
   const hasMfa = verifiedFactors.length > 0;
@@ -169,6 +211,38 @@ const AccountSecurityPanel = ({ user }: { user: User }) => {
       toast.error(getErrorMessage(err, "Impossible de désactiver la double authentification."));
     } finally {
       setLoadingFactors(false);
+    }
+  };
+
+  const deleteAccount = async () => {
+    if (!isAccountDeletionConfirmed(deleteConfirmation)) {
+      toast.error(`Saisissez exactement « ${ACCOUNT_DELETION_CONFIRMATION} ».`);
+      return;
+    }
+
+    setDeletingAccount(true);
+    try {
+      const { data, error } = await supabase.functions.invoke("delete-account", {
+        body: { confirmation: ACCOUNT_DELETION_CONFIRMATION },
+      });
+      if (error) throw error;
+      if (!data?.ok) throw new Error("account_deletion_failed");
+
+      toast.success("Votre compte et vos données ont été supprimés.");
+      try {
+        await supabase.auth.signOut({ scope: "local" });
+      } catch {
+        // Le compte n'existe déjà plus côté serveur ; seul le nettoyage local compte ici.
+      }
+      clearAccountLocalState();
+      window.location.replace(role === "entreprise" ? "/entreprise" : "/");
+    } catch (error) {
+      void reportClientError("account_deletion", error);
+      toast.error(await readFunctionErrorMessage(
+        error,
+        "La suppression n'a pas abouti. Votre compte reste accessible ; réessayez ou contactez le support.",
+      ));
+      setDeletingAccount(false);
     }
   };
 
@@ -290,6 +364,73 @@ const AccountSecurityPanel = ({ user }: { user: User }) => {
           </div>
         </div>
       )}
+
+      <div className="mt-5 rounded-xl border border-destructive/25 bg-destructive/5 p-4 sm:p-5">
+        <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+          <div className="flex items-start gap-3">
+            <AlertTriangle className="mt-0.5 h-5 w-5 shrink-0 text-destructive" />
+            <div>
+              <p className="font-semibold text-foreground">Supprimer définitivement mon compte</p>
+              <p className="mt-1 max-w-3xl text-sm leading-6 text-muted-foreground">
+                Le profil, les candidatures, les échanges et les documents seront supprimés. Pour une entreprise,
+                l’abonnement actif est annulé. Les seules données de facture exigées par la loi restent isolées et
+                inaccessibles depuis le site pendant leur durée légale de conservation.
+              </p>
+            </div>
+          </div>
+
+          <AlertDialog
+            open={deleteDialogOpen}
+            onOpenChange={(open) => {
+              if (deletingAccount) return;
+              setDeleteDialogOpen(open);
+              if (!open) setDeleteConfirmation("");
+            }}
+          >
+            <AlertDialogTrigger asChild>
+              <Button type="button" variant="destructive" className="shrink-0">
+                <Trash2 className="mr-2 h-4 w-4" />
+                Supprimer mon compte
+              </Button>
+            </AlertDialogTrigger>
+            <AlertDialogContent>
+              <AlertDialogHeader>
+                <AlertDialogTitle>Cette suppression est irréversible</AlertDialogTitle>
+                <AlertDialogDescription className="space-y-3">
+                  <span className="block">
+                    Vous perdrez immédiatement l’accès à votre espace et aux documents associés.
+                  </span>
+                  <span className="block font-medium text-foreground">
+                    Pour confirmer, saisissez exactement : {ACCOUNT_DELETION_CONFIRMATION}
+                  </span>
+                </AlertDialogDescription>
+              </AlertDialogHeader>
+              <Input
+                value={deleteConfirmation}
+                onChange={(event) => setDeleteConfirmation(event.target.value)}
+                placeholder={ACCOUNT_DELETION_CONFIRMATION}
+                autoComplete="off"
+                aria-label="Confirmation de suppression du compte"
+                disabled={deletingAccount}
+              />
+              <AlertDialogFooter>
+                <AlertDialogCancel disabled={deletingAccount}>Annuler</AlertDialogCancel>
+                <AlertDialogAction
+                  type="button"
+                  onClick={(event) => {
+                    event.preventDefault();
+                    void deleteAccount();
+                  }}
+                  disabled={!isAccountDeletionConfirmed(deleteConfirmation) || deletingAccount}
+                  className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+                >
+                  {deletingAccount ? "Suppression en cours..." : "Supprimer définitivement"}
+                </AlertDialogAction>
+              </AlertDialogFooter>
+            </AlertDialogContent>
+          </AlertDialog>
+        </div>
+      </div>
     </section>
   );
 };
