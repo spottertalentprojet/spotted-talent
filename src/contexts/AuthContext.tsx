@@ -137,16 +137,32 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
       }
     );
 
-    void supabase.auth.getSession()
-      .then(({ data: { session }, error }) => {
-        if (error) throw error;
-        if (active) void loadSession(session, false);
-      })
-      .catch((error: unknown) => {
-        console.error("Erreur initialisation session:", error);
-        void reportClientError("auth_initialization", error);
-        if (active) setLoading(false);
-      });
+    const initializeSession = async () => {
+      let lastError: unknown = null;
+
+      for (const retryDelay of [0, 500, 1_500]) {
+        if (!active) return;
+        if (retryDelay > 0) {
+          await new Promise((resolve) => window.setTimeout(resolve, retryDelay));
+          if (!active) return;
+        }
+
+        try {
+          const { data: { session }, error } = await supabase.auth.getSession();
+          if (error) throw error;
+          if (active) await loadSession(session, false);
+          return;
+        } catch (error: unknown) {
+          lastError = error;
+        }
+      }
+
+      console.error("Erreur initialisation session:", lastError);
+      void reportClientError("auth_initialization", lastError);
+      if (active) setLoading(false);
+    };
+
+    void initializeSession();
 
     return () => {
       active = false;
