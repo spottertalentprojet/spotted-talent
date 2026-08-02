@@ -2,8 +2,8 @@ import { useLocation } from "react-router-dom";
 
 import ThemeToggle from "@/components/ThemeToggle";
 
-const routesWithInlineToggle = new Set(["/", "/entreprise-info"]);
-const routesWithCustomHeader = ["/talent/profil/"];
+const routesWithInlineToggle = new Set(["/", "/entreprise", "/entreprise-info"]);
+const routesWithCustomHeader = ["/talent/profil/", "/entreprise/profil/", "/talent/dashboard", "/entreprise/dashboard"];
 
 const RouteThemeToggle = () => {
   const location = useLocation();

@@ -6,6 +6,7 @@ import { Toaster } from "@/components/ui/toaster";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import RouteThemeToggle from "@/components/RouteThemeToggle";
 import { AuthProvider } from "@/contexts/AuthContext";
+import ConfirmedEmailRoute from "@/components/ConfirmedEmailRoute";
 
 const Index = lazy(() => import("./pages/Index.tsx"));
 const TalentAuth = lazy(() => import("./pages/TalentAuth.tsx"));
@@ -14,11 +15,14 @@ const TalentDashboard = lazy(() => import("./pages/TalentDashboard.tsx"));
 const EntrepriseDashboard = lazy(() => import("./pages/EntrepriseDashboard.tsx"));
 const EntrepriseLanding = lazy(() => import("./pages/EntrepriseLanding.tsx"));
 const TalentProfil = lazy(() => import("./pages/TalentProfil.tsx"));
+const EntrepriseProfil = lazy(() => import("./pages/EntrepriseProfil.tsx"));
 const Admin = lazy(() => import("./pages/Admin.tsx"));
 const NotFound = lazy(() => import("./pages/NotFound.tsx"));
 const CGU = lazy(() => import("./pages/CGU.tsx"));
+const Confidentialite = lazy(() => import("./pages/Confidentialite.tsx"));
 const ResetPassword = lazy(() => import("./pages/ResetPassword.tsx"));
 const OAuthComplete = lazy(() => import("./pages/OAuthComplete.tsx"));
+const AuthConfirmed = lazy(() => import("./pages/AuthConfirmed.tsx"));
 
 const queryClient = new QueryClient();
 
@@ -43,15 +47,41 @@ const App = () => (
             <Routes>
               <Route path="/" element={<Index />} />
               <Route path="/talent" element={<TalentAuth />} />
-              <Route path="/entreprise" element={<EntrepriseAuth />} />
+              <Route path="/entreprise" element={<EntrepriseLanding />} />
+              <Route path="/entreprise/connexion" element={<EntrepriseAuth />} />
               <Route path="/entreprise-info" element={<EntrepriseLanding />} />
-              <Route path="/talent/dashboard" element={<TalentDashboard />} />
-              <Route path="/entreprise/dashboard" element={<EntrepriseDashboard />} />
+              <Route
+                path="/talent/dashboard"
+                element={
+                  <ConfirmedEmailRoute role="talent">
+                    <TalentDashboard />
+                  </ConfirmedEmailRoute>
+                }
+              />
+              <Route
+                path="/entreprise/dashboard"
+                element={
+                  <ConfirmedEmailRoute role="entreprise">
+                    <EntrepriseDashboard />
+                  </ConfirmedEmailRoute>
+                }
+              />
               <Route path="/reset-password" element={<ResetPassword />} />
               <Route path="/oauth-complete" element={<OAuthComplete />} />
+              <Route path="/auth-confirmed" element={<AuthConfirmed />} />
+              <Route path="/auth-confirmed/:roleParam" element={<AuthConfirmed />} />
               <Route path="/talent/profil/:id" element={<TalentProfil />} />
+              <Route
+                path="/entreprise/profil/:id"
+                element={
+                  <ConfirmedEmailRoute role="talent">
+                    <EntrepriseProfil />
+                  </ConfirmedEmailRoute>
+                }
+              />
               <Route path="/admin" element={<Admin />} />
               <Route path="/cgu" element={<CGU />} />
+              <Route path="/confidentialite" element={<Confidentialite />} />
               <Route path="*" element={<NotFound />} />
             </Routes>
           </Suspense>

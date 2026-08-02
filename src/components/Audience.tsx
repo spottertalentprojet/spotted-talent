@@ -89,7 +89,7 @@ const Audience = () => (
           features={entreprise}
           accent="accent"
           ctaLabel="Découvrir l'espace entreprise"
-          ctaTo="/entreprise-info"
+          ctaTo="/entreprise"
         />
       </div>
     </div>

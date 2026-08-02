@@ -9,24 +9,24 @@ const plans = [
     name: "Starter",
     price: "39 €",
     period: "HT /mois",
-    desc: "Pour les petites entreprises",
-    features: ["5 annonces par mois", "Matching candidats IA", "Dashboard essentiel", "Support email"],
+    desc: "Pour lancer vos premiers recrutements",
+    features: ["1 annonce active", "1 nouvelle annonce par semaine", "Messagerie candidats", "Suivi des candidatures", "Documents partagés"],
     highlighted: false,
   },
   {
     name: "Boost",
     price: "149 €",
     period: "HT /mois",
-    desc: "Pour les entreprises en croissance",
-    features: ["25 annonces par mois", "Matching candidats avancé", "Offres générées par IA", "Dashboard analytique complet", "Support prioritaire"],
+    desc: "Pour recruter plus vite",
+    features: ["Tout Starter inclus", "Jusqu'à 5 annonces actives", "5 nouvelles annonces par semaine", "Questions de présélection", "Badge recrutement urgent"],
     highlighted: true,
   },
   {
     name: "Premium Intérim",
     price: "349 €",
     period: "HT /mois",
-    desc: "Pour les grandes structures",
-    features: ["Annonces illimitées", "Matching premium IA", "Offres 100% générées par IA", "Dashboard analytique avancé", "Accès API", "Responsable de compte dédié"],
+    desc: "Pour agences et structures à fort volume",
+    features: ["Tout Starter et Boost inclus", "Annonces illimitées, usage raisonnable", "Publication intensive", "Annonces prioritaires", "Export candidats"],
     highlighted: false,
   },
 ];
@@ -104,7 +104,7 @@ const EntrepriseLanding = () => {
             <a href="/" className="hidden text-sm text-muted-foreground transition-colors hover:text-foreground sm:block">
               Retour à l'accueil
             </a>
-            <Link to="/entreprise">
+            <Link to="/entreprise/connexion">
               <Button variant="glow" size="sm">Se connecter</Button>
             </Link>
           </div>
@@ -132,7 +132,7 @@ const EntrepriseLanding = () => {
                 Spotted Talent aide les entreprises à recevoir des candidatures plus pertinentes et mieux qualifiées — sans se noyer dans le volume.
               </p>
               <div className="mb-10 flex flex-col gap-3 sm:flex-row">
-                <Link to="/entreprise">
+                <Link to="/entreprise/connexion">
                   <Button variant="glow" size="lg" className="w-full gap-2 px-8 sm:w-auto">
                     Commencer gratuitement
                     <ArrowRight className="h-4 w-4" />
@@ -318,7 +318,7 @@ const EntrepriseLanding = () => {
                     </li>
                   ))}
                 </ul>
-                <Link to="/entreprise">
+                <Link to="/entreprise/connexion">
                   <Button variant={plan.highlighted ? "glow" : "ghost-glow"} className="w-full">Commencer</Button>
                 </Link>
               </div>
@@ -360,7 +360,7 @@ const EntrepriseLanding = () => {
           <p className="mb-8 text-muted-foreground">
             Créez votre compte en 2 minutes et commencez à recruter différemment.
           </p>
-          <Link to="/entreprise">
+          <Link to="/entreprise/connexion">
             <Button variant="glow" size="lg" className="gap-2 px-10">
               Créer mon compte entreprise
               <ArrowRight className="h-4 w-4" />
@@ -376,7 +376,10 @@ const EntrepriseLanding = () => {
             <span className="font-bold gradient-text">Spotted Talent</span>
           </div>
           <p className="text-xs text-muted-foreground">© 2026 Spotted Talent — La Ravoire, 73490</p>
-          <a href="/cgu" className="text-xs text-muted-foreground hover:text-foreground">Mentions légales & CGU</a>
+          <div className="flex flex-wrap justify-center gap-4">
+            <a href="/cgu" className="text-xs text-muted-foreground hover:text-foreground">Mentions légales & CGU</a>
+            <a href="/confidentialite" className="text-xs text-muted-foreground hover:text-foreground">Confidentialité</a>
+          </div>
         </div>
       </footer>
 

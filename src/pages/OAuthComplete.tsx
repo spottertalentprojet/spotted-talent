@@ -7,6 +7,7 @@ import { Input } from "@/components/ui/input";
 import { TablesInsert, TablesUpdate } from "@/integrations/supabase/types";
 import { ArrowLeft, Building2, Hash, Sparkles } from "lucide-react";
 import { toast } from "sonner";
+import { translateAuthError } from "@/lib/authMessages";
 
 const OAuthComplete = () => {
   const [params] = useSearchParams();
@@ -90,7 +91,7 @@ const OAuthComplete = () => {
 
         navigate("/talent/dashboard", { replace: true });
       } catch (err: any) {
-        toast.error(err.message);
+        toast.error(translateAuthError(err?.message));
       } finally {
         setSyncingProfile(false);
       }
@@ -153,13 +154,13 @@ const OAuthComplete = () => {
       toast.success("Profil entreprise finalisé.");
       navigate("/entreprise/dashboard", { replace: true });
     } catch (err: any) {
-      toast.error(err.message);
+      toast.error(translateAuthError(err?.message));
     } finally {
       setLoading(false);
     }
   };
 
-  const backPath = role === "entreprise" ? "/entreprise" : "/talent";
+  const backPath = role === "entreprise" ? "/entreprise/connexion" : "/talent";
 
   return (
     <div className="relative flex min-h-screen items-center justify-center bg-background px-4">

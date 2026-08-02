@@ -6,6 +6,7 @@ import { Input } from "@/components/ui/input";
 import { useAuth } from "@/contexts/AuthContext";
 import { ArrowLeft, KeyRound, Lock, Sparkles } from "lucide-react";
 import { toast } from "sonner";
+import { translateAuthError } from "@/lib/authMessages";
 
 const ResetPassword = () => {
   const [password, setPassword] = useState("");
@@ -16,14 +17,14 @@ const ResetPassword = () => {
   const { session, loading: authLoading } = useAuth();
 
   const role = params.get("role") === "entreprise" ? "entreprise" : "talent";
-  const backPath = role === "entreprise" ? "/entreprise" : "/talent";
+  const backPath = role === "entreprise" ? "/entreprise/connexion" : "/talent";
   const successPath = role === "entreprise" ? "/entreprise/dashboard" : "/talent/dashboard";
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
 
-    if (password.length < 6) {
-      toast.error("Le mot de passe doit contenir au moins 6 caractères.");
+    if (password.length < 12) {
+      toast.error("Le mot de passe doit contenir au moins 12 caracteres.");
       return;
     }
 
@@ -41,7 +42,7 @@ const ResetPassword = () => {
       toast.success("Votre mot de passe a été mis à jour.");
       navigate(successPath, { replace: true });
     } catch (err: any) {
-      toast.error(err.message);
+      toast.error(translateAuthError(err?.message));
     } finally {
       setLoading(false);
     }
@@ -98,7 +99,7 @@ const ResetPassword = () => {
                   onChange={(e) => setPassword(e.target.value)}
                   className="border-border bg-secondary pl-10"
                   required
-                  minLength={6}
+                  minLength={12}
                 />
               </div>
 
@@ -111,7 +112,7 @@ const ResetPassword = () => {
                   onChange={(e) => setConfirmPassword(e.target.value)}
                   className="border-border bg-secondary pl-10"
                   required
-                  minLength={6}
+                  minLength={12}
                 />
               </div>
 

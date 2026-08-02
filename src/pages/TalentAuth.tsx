@@ -4,8 +4,9 @@ import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/contexts/AuthContext";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { ArrowLeft, Lock, Mail, Sparkles, User as UserIcon } from "lucide-react";
+import { ArrowLeft, Lock, Mail, Phone, Sparkles, User as UserIcon } from "lucide-react";
 import { toast } from "sonner";
+import { translateAuthError } from "@/lib/authMessages";
 
 const getAuthRedirectUrl = (path: string) => {
   const isLocalhost = ["localhost", "127.0.0.1"].includes(window.location.hostname);
@@ -30,12 +31,28 @@ const TalentAuth = () => {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [fullName, setFullName] = useState("");
+  const [telephone, setTelephone] = useState("");
   const [loading, setLoading] = useState(false);
   const { user, profile, loading: authLoading, signOut } = useAuth();
   const navigate = useNavigate();
 
   useEffect(() => {
+    const notice = sessionStorage.getItem("spottedtalent_account_notice");
+    if (notice === "suspended") {
+      toast.info("Votre compte a été suspendu par sécurité. Reconnectez-vous pour le réactiver.");
+      sessionStorage.removeItem("spottedtalent_account_notice");
+    } else if (notice === "reactivated") {
+      toast.success("Compte réactivé. Bon retour sur Spotted Talent.");
+      sessionStorage.removeItem("spottedtalent_account_notice");
+    } else if (notice === "email_unconfirmed") {
+      toast.info("Verifiez votre e-mail pour activer le compte avant de vous connecter.");
+      sessionStorage.removeItem("spottedtalent_account_notice");
+    }
+  }, []);
+
+  useEffect(() => {
     if (authLoading || !user) return;
+    if (sessionStorage.getItem("spottedtalent_waiting_email_confirmation") === "1") return;
 
     const role = profile?.role ?? user.user_metadata?.role;
 
@@ -56,26 +73,50 @@ const TalentAuth = () => {
 
     try {
       if (isLogin) {
+        sessionStorage.setItem("spottedtalent_reactivate_login", "1");
         const { error } = await supabase.auth.signInWithPassword({ email, password });
         if (error) throw error;
         toast.success("Connexion réussie !");
         navigate("/talent/dashboard");
       } else {
+        const phoneDigits = telephone.replace(/\D/g, "");
+        if (phoneDigits.length < 10 || phoneDigits.length > 15) {
+          toast.error("Le numero de telephone doit contenir entre 10 et 15 chiffres.");
+          setLoading(false);
+          return;
+        }
+
+        if (password.length < 12) {
+          toast.error("Le mot de passe doit contenir au moins 12 caracteres.");
+          setLoading(false);
+          return;
+        }
+
+        sessionStorage.setItem("spottedtalent_waiting_email_confirmation", "1");
+
         const { error } = await supabase.auth.signUp({
           email,
           password,
           options: {
-            data: { role: "talent", full_name: fullName },
-            emailRedirectTo: getAuthRedirectUrl("/talent"),
+            data: { role: "talent", full_name: fullName, telephone: telephone.trim() },
+            emailRedirectTo: getAuthRedirectUrl("/auth-confirmed/talent"),
           },
         });
 
         if (error) throw error;
 
+        const { error: signOutError } = await supabase.auth.signOut();
+        if (signOutError) console.warn("Session temporaire non fermee apres inscription:", signOutError);
+
+        sessionStorage.removeItem("spottedtalent_waiting_email_confirmation");
+        setIsLogin(true);
+        setPassword("");
         toast.success("Compte créé ! Vérifiez votre email pour finaliser l'accès.");
       }
     } catch (err: any) {
-      toast.error(err.message);
+      sessionStorage.removeItem("spottedtalent_reactivate_login");
+      sessionStorage.removeItem("spottedtalent_waiting_email_confirmation");
+      toast.error(translateAuthError(err?.message));
     } finally {
       setLoading(false);
     }
@@ -101,7 +142,34 @@ const TalentAuth = () => {
       toast.success("Email de réinitialisation envoyé.");
       setShowForgotPassword(false);
     } catch (err: any) {
-      toast.error(err.message);
+      toast.error(translateAuthError(err?.message));
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleResendConfirmation = async () => {
+    if (!email) {
+      toast.error("Renseignez votre email pour renvoyer le lien de confirmation.");
+      return;
+    }
+
+    setLoading(true);
+
+    try {
+      const { error } = await supabase.auth.resend({
+        type: "signup",
+        email,
+        options: {
+          emailRedirectTo: getAuthRedirectUrl("/auth-confirmed/talent"),
+        },
+      });
+
+      if (error) throw error;
+
+      toast.success("Email de confirmation renvoyé. Vérifiez aussi vos spams.");
+    } catch (err: any) {
+      toast.error(translateAuthError(err?.message));
     } finally {
       setLoading(false);
     }
@@ -111,6 +179,7 @@ const TalentAuth = () => {
     setLoading(true);
 
     try {
+      sessionStorage.setItem("spottedtalent_reactivate_login", "1");
       const { error } = await supabase.auth.signInWithOAuth({
         provider: "google",
         options: {
@@ -123,7 +192,8 @@ const TalentAuth = () => {
 
       if (error) throw error;
     } catch (err: any) {
-      toast.error(err.message);
+      sessionStorage.removeItem("spottedtalent_reactivate_login");
+      toast.error(translateAuthError(err?.message));
       setLoading(false);
     }
   };
@@ -193,16 +263,30 @@ const TalentAuth = () => {
           <>
             <form onSubmit={handleSubmit} className="glass-card space-y-4 p-5 sm:p-8">
               {!isLogin && (
-                <div className="relative">
-                  <UserIcon className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
-                  <Input
-                    placeholder="Nom complet"
-                    value={fullName}
-                    onChange={(e) => setFullName(e.target.value)}
-                    className="border-border bg-secondary pl-10"
-                    required
-                  />
-                </div>
+                <>
+                  <div className="relative">
+                    <UserIcon className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+                    <Input
+                      placeholder="Nom complet"
+                      value={fullName}
+                      onChange={(e) => setFullName(e.target.value)}
+                      className="border-border bg-secondary pl-10"
+                      required
+                    />
+                  </div>
+
+                  <div className="relative">
+                    <Phone className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+                    <Input
+                      type="tel"
+                      placeholder="Telephone"
+                      value={telephone}
+                      onChange={(e) => setTelephone(e.target.value)}
+                      className="border-border bg-secondary pl-10"
+                      required
+                    />
+                  </div>
+                </>
               )}
 
               <div className="relative">
@@ -226,7 +310,7 @@ const TalentAuth = () => {
                   onChange={(e) => setPassword(e.target.value)}
                   className="border-border bg-secondary pl-10"
                   required
-                  minLength={6}
+                  minLength={isLogin ? 1 : 12}
                 />
               </div>
 
@@ -245,6 +329,26 @@ const TalentAuth = () => {
               <Button variant="glow" className="w-full" disabled={loading}>
                 {loading ? "Chargement..." : isLogin ? "Se connecter" : "Créer mon compte"}
               </Button>
+
+              {isLogin && (
+                <button
+                  type="button"
+                  onClick={handleResendConfirmation}
+                  className="w-full text-sm font-medium text-primary transition-colors hover:underline disabled:cursor-not-allowed disabled:text-muted-foreground"
+                  disabled={loading || !email}
+                >
+                  Renvoyer l'email de confirmation
+                </button>
+              )}
+
+              {!isLogin && (
+                <p className="text-center text-xs text-muted-foreground">
+                  En créant un compte, vous acceptez nos{" "}
+                  <a href="/cgu" className="text-primary hover:underline">CGU</a>{" "}
+                  et notre{" "}
+                  <a href="/confidentialite" className="text-primary hover:underline">politique de confidentialité</a>.
+                </p>
+              )}
 
               <div className="relative py-2">
                 <div className="absolute inset-0 flex items-center">

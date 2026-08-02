@@ -51,6 +51,7 @@ export type BillingPlan = {
 
 export type BillingPlanEntitlements = {
   maxActiveOffers: number | null;
+  maxWeeklyNewOffers: number | null;
   screeningQuestions: boolean;
   automatedCandidateMessages: boolean;
   urgentBadge: boolean;
@@ -118,25 +119,28 @@ export const ABONNEMENT_PLANS: BillingPlan[] = [
   {
     id: "starter",
     name: "Starter",
-    description: "Pour démarrer simplement avec un premier volume d'annonces.",
+    description: "Pour lancer vos premiers recrutements avec les outils essentiels.",
     monthlyPriceCents: 3900,
     yearlyPriceCents: 46800,
     features: [
       "1 annonce active",
+      "1 nouvelle annonce par semaine",
       "Messagerie avec les talents",
       "Suivi des candidatures",
       "Documents partagés",
+      "Facturation Stripe sécurisée",
     ],
   },
   {
     id: "boost",
     name: "Boost",
-    description: "Pour recruter plus vite avec des outils de tri avancés.",
+    description: "Pour recruter plus vite avec des outils de tri et de relance.",
     monthlyPriceCents: 14900,
     yearlyPriceCents: 178800,
     features: [
       "Tout Starter inclus",
       "Jusqu'à 5 annonces actives",
+      "5 nouvelles annonces par semaine",
       "Questions de présélection",
       "Notifications automatiques aux candidats",
       "Badge recrutement urgent",
@@ -145,16 +149,16 @@ export const ABONNEMENT_PLANS: BillingPlan[] = [
   {
     id: "premium",
     name: "Premium Intérim",
-    description: "Pour agences et structures qui recrutent en continu.",
+    description: "Pour agences et structures avec un volume de recrutement continu.",
     monthlyPriceCents: 34900,
     yearlyPriceCents: 418800,
     features: [
       "Tout Starter et Boost inclus",
       "Annonces actives illimitées (usage raisonnable)",
+      "Publication intensive selon besoin métier",
       "Annonces prioritaires",
       "Profils matchés mis en avant",
-      "Export de candidats",
-      "Support prioritaire",
+      "Export de candidats et support prioritaire",
     ],
   },
 ];
@@ -162,6 +166,7 @@ export const ABONNEMENT_PLANS: BillingPlan[] = [
 export const BILLING_PLAN_ENTITLEMENTS: Record<BillingPlanId, BillingPlanEntitlements> = {
   starter: {
     maxActiveOffers: 1,
+    maxWeeklyNewOffers: 1,
     screeningQuestions: false,
     automatedCandidateMessages: false,
     urgentBadge: false,
@@ -172,6 +177,7 @@ export const BILLING_PLAN_ENTITLEMENTS: Record<BillingPlanId, BillingPlanEntitle
   },
   boost: {
     maxActiveOffers: 5,
+    maxWeeklyNewOffers: 5,
     screeningQuestions: true,
     automatedCandidateMessages: true,
     urgentBadge: true,
@@ -182,6 +188,7 @@ export const BILLING_PLAN_ENTITLEMENTS: Record<BillingPlanId, BillingPlanEntitle
   },
   premium: {
     maxActiveOffers: null,
+    maxWeeklyNewOffers: null,
     screeningQuestions: true,
     automatedCandidateMessages: true,
     urgentBadge: true,

@@ -6,6 +6,7 @@ import { Input } from "@/components/ui/input";
 import ConfirmActionDialog from "@/components/ConfirmActionDialog";
 import { Sparkles, Users, Building2, Target, FileText, Trash2, LogOut, BarChart3, Lock, Mail } from "lucide-react";
 import { toast } from "sonner";
+import { formatStoredMessageText } from "@/lib/utils";
 
 const ADMIN_EMAIL = "contact@spottedtalent.fr";
 
@@ -101,7 +102,7 @@ const Admin = () => {
             <span className="gradient-text text-2xl font-bold">Spotted Talent</span>
           </div>
           <h1 className="text-xl font-bold">Espace Administration</h1>
-          <p className="text-muted-foreground text-sm mt-2">Acces reserve au personnel autorise</p>
+          <p className="text-muted-foreground text-sm mt-2">Accès réservé au personnel autorisé</p>
         </div>
         <form onSubmit={seConnecter} className="glass-card p-8 space-y-4">
           <div className="relative">
@@ -193,7 +194,7 @@ const Admin = () => {
                 </div>
               </div>
               <div className="glass-card p-6">
-                <h3 className="font-semibold mb-4">Dernieres entreprises inscrites</h3>
+                <h3 className="font-semibold mb-4">Dernières entreprises inscrites</h3>
                 <div className="space-y-2">
                   {entreprises.slice(0, 5).map((e: any) => (
                     <div key={e.id} className="flex items-center gap-3 p-2 bg-secondary/50 rounded-lg">
@@ -273,21 +274,21 @@ const Admin = () => {
                   <div className="flex items-start justify-between">
                     <div>
                       <div className="flex items-center gap-2 mb-1">
-                        <h3 className="font-semibold text-sm">{o.titre}</h3>
+                        <h3 className="font-semibold text-sm">{formatStoredMessageText(o.titre)}</h3>
                         <span className={`text-xs px-2 py-0.5 rounded-full border ${o.statut === "active" ? "bg-green-500/10 text-green-400 border-green-500/20" : "bg-secondary text-muted-foreground border-border"}`}>
                           {o.statut === "active" ? "Active" : "Inactive"}
                         </span>
                       </div>
-                      <p className="text-xs text-muted-foreground">📍 {o.localisation || "Non precise"} — 📋 {o.contrat}</p>
-                      <p className="text-xs text-muted-foreground mt-1">📅 {new Date(o.created_at).toLocaleDateString("fr-FR")}</p>
+                      <p className="text-xs text-muted-foreground">{formatStoredMessageText(o.localisation) || "Non précisé"} - {formatStoredMessageText(o.contrat)}</p>
+                      <p className="text-xs text-muted-foreground mt-1">{new Date(o.created_at).toLocaleDateString("fr-FR")}</p>
                     </div>
                     <div className="flex gap-2">
                       <Button variant="ghost-glow" size="sm" onClick={() => toggleOffre(o.id, o.statut)}>
-                        {o.statut === "active" ? "Desactiver" : "Activer"}
+                        {o.statut === "active" ? "Désactiver" : "Activer"}
                       </Button>
                       <ConfirmActionDialog
                         title="Supprimer cette offre ?"
-                        description="Cette offre sera retiree de la plateforme. Vous pourrez encore changer d avis maintenant, mais pas apres validation."
+                        description="Cette offre sera retirée de la plateforme. Vous pouvez encore changer d'avis maintenant, mais pas après validation."
                         onConfirm={() => supprimerOffre(o.id)}
                       >
                         <button className="text-red-400 hover:text-red-300 p-2">

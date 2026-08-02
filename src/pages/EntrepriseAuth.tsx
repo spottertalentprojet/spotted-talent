@@ -4,8 +4,9 @@ import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/contexts/AuthContext";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { ArrowLeft, Building2, Hash, Lock, Mail, Sparkles } from "lucide-react";
+import { ArrowLeft, Building2, Hash, Lock, Mail, Phone, Sparkles } from "lucide-react";
 import { toast } from "sonner";
+import { translateAuthError } from "@/lib/authMessages";
 
 const getAuthRedirectUrl = (path: string) => {
   const isLocalhost = ["localhost", "127.0.0.1"].includes(window.location.hostname);
@@ -31,25 +32,36 @@ const EntrepriseAuth = () => {
   const [password, setPassword] = useState("");
   const [companyName, setCompanyName] = useState("");
   const [siret, setSiret] = useState("");
+  const [telephone, setTelephone] = useState("");
   const [loading, setLoading] = useState(false);
   const { user, profile, loading: authLoading, signOut } = useAuth();
   const navigate = useNavigate();
 
   useEffect(() => {
+    const notice = sessionStorage.getItem("spottedtalent_account_notice");
+    if (notice === "suspended") {
+      toast.info("Votre compte a été suspendu par sécurité. Reconnectez-vous pour le réactiver.");
+      sessionStorage.removeItem("spottedtalent_account_notice");
+    } else if (notice === "reactivated") {
+      toast.success("Compte réactivé. Bon retour sur Spotted Talent.");
+      sessionStorage.removeItem("spottedtalent_account_notice");
+    } else if (notice === "email_unconfirmed") {
+      toast.info("Verifiez votre e-mail pour activer le compte avant de vous connecter.");
+      sessionStorage.removeItem("spottedtalent_account_notice");
+    }
+  }, []);
+
+  useEffect(() => {
     if (authLoading || !user) return;
+    if (sessionStorage.getItem("spottedtalent_waiting_email_confirmation") === "1") return;
 
     const role = profile?.role ?? user.user_metadata?.role;
-
-    if (role === "entreprise") {
-      navigate("/entreprise/dashboard", { replace: true });
-      return;
-    }
 
     if (role && role !== "entreprise") {
       toast.error("Ce compte n'est pas un compte entreprise.");
       void signOut();
     }
-  }, [authLoading, navigate, profile?.role, signOut, user]);
+  }, [authLoading, profile?.role, signOut, user]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -57,6 +69,7 @@ const EntrepriseAuth = () => {
 
     try {
       if (isLogin) {
+        sessionStorage.setItem("spottedtalent_reactivate_login", "1");
         const { error } = await supabase.auth.signInWithPassword({ email, password });
         if (error) throw error;
         toast.success("Connexion réussie !");
@@ -67,22 +80,44 @@ const EntrepriseAuth = () => {
           setLoading(false);
           return;
         }
+        const phoneDigits = telephone.replace(/\D/g, "");
+        if (phoneDigits.length < 10 || phoneDigits.length > 15) {
+          toast.error("Le numero de telephone doit contenir entre 10 et 15 chiffres.");
+          setLoading(false);
+          return;
+        }
+
+        if (password.length < 12) {
+          toast.error("Le mot de passe doit contenir au moins 12 caracteres.");
+          setLoading(false);
+          return;
+        }
+
+        sessionStorage.setItem("spottedtalent_waiting_email_confirmation", "1");
 
         const { error } = await supabase.auth.signUp({
           email,
           password,
           options: {
-            data: { role: "entreprise", full_name: companyName, siret },
-            emailRedirectTo: getAuthRedirectUrl("/entreprise"),
+            data: { role: "entreprise", full_name: companyName, siret, telephone: telephone.trim(), company_phone: telephone.trim() },
+            emailRedirectTo: getAuthRedirectUrl("/auth-confirmed/entreprise"),
           },
         });
 
         if (error) throw error;
 
+        const { error: signOutError } = await supabase.auth.signOut();
+        if (signOutError) console.warn("Session temporaire non fermee apres inscription:", signOutError);
+
+        sessionStorage.removeItem("spottedtalent_waiting_email_confirmation");
+        setIsLogin(true);
+        setPassword("");
         toast.success("Compte créé ! Vérifiez votre email pour activer l'accès.");
       }
     } catch (err: any) {
-      toast.error(err.message);
+      sessionStorage.removeItem("spottedtalent_reactivate_login");
+      sessionStorage.removeItem("spottedtalent_waiting_email_confirmation");
+      toast.error(translateAuthError(err?.message));
     } finally {
       setLoading(false);
     }
@@ -108,7 +143,34 @@ const EntrepriseAuth = () => {
       toast.success("Email de réinitialisation envoyé.");
       setShowForgotPassword(false);
     } catch (err: any) {
-      toast.error(err.message);
+      toast.error(translateAuthError(err?.message));
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleResendConfirmation = async () => {
+    if (!email) {
+      toast.error("Renseignez votre email professionnel pour renvoyer le lien de confirmation.");
+      return;
+    }
+
+    setLoading(true);
+
+    try {
+      const { error } = await supabase.auth.resend({
+        type: "signup",
+        email,
+        options: {
+          emailRedirectTo: getAuthRedirectUrl("/auth-confirmed/entreprise"),
+        },
+      });
+
+      if (error) throw error;
+
+      toast.success("Email de confirmation renvoyé. Vérifiez aussi vos spams.");
+    } catch (err: any) {
+      toast.error(translateAuthError(err?.message));
     } finally {
       setLoading(false);
     }
@@ -118,6 +180,7 @@ const EntrepriseAuth = () => {
     setLoading(true);
 
     try {
+      sessionStorage.setItem("spottedtalent_reactivate_login", "1");
       const { error } = await supabase.auth.signInWithOAuth({
         provider: "google",
         options: {
@@ -130,10 +193,14 @@ const EntrepriseAuth = () => {
 
       if (error) throw error;
     } catch (err: any) {
-      toast.error(err.message);
+      sessionStorage.removeItem("spottedtalent_reactivate_login");
+      toast.error(translateAuthError(err?.message));
       setLoading(false);
     }
   };
+
+  const connectedRole = profile?.role ?? user?.user_metadata?.role;
+  const isConnectedEntreprise = Boolean(user && connectedRole === "entreprise");
 
   return (
     <div className="relative flex min-h-screen items-start justify-center bg-background px-4 py-8 sm:items-center sm:py-0">
@@ -142,7 +209,7 @@ const EntrepriseAuth = () => {
 
       <div className="relative w-full max-w-md pt-10 sm:pt-0">
         <button
-          onClick={() => navigate("/entreprise-info")}
+          onClick={() => navigate("/entreprise")}
           className="mb-6 flex items-center gap-2 text-sm text-muted-foreground transition-colors hover:text-foreground sm:mb-8"
         >
           <ArrowLeft className="h-4 w-4" />
@@ -204,6 +271,23 @@ const EntrepriseAuth = () => {
         ) : (
           <>
             <form onSubmit={handleSubmit} className="glass-card space-y-4 p-5 sm:p-8">
+              {isConnectedEntreprise && (
+                <div className="rounded-2xl border border-primary/20 bg-primary/10 p-4">
+                  <p className="text-sm font-semibold text-foreground">Vous êtes déjà connecté.</p>
+                  <p className="mt-1 text-xs leading-5 text-muted-foreground">
+                    Vous pouvez ouvrir votre dashboard entreprise ou rester sur cette page.
+                  </p>
+                  <div className="mt-3 flex flex-col gap-2 sm:flex-row">
+                    <Button type="button" variant="glow" size="sm" className="w-full sm:w-auto" onClick={() => navigate("/entreprise/dashboard")}>
+                      Ouvrir mon dashboard
+                    </Button>
+                    <Button type="button" variant="ghost-glow" size="sm" className="w-full sm:w-auto" onClick={() => void signOut()}>
+                      Changer de compte
+                    </Button>
+                  </div>
+                </div>
+              )}
+
               {!isLogin && (
                 <>
                   <div className="relative">
@@ -226,6 +310,18 @@ const EntrepriseAuth = () => {
                       className="border-border bg-secondary pl-10"
                       required
                       maxLength={14}
+                    />
+                  </div>
+
+                  <div className="relative">
+                    <Phone className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+                    <Input
+                      type="tel"
+                      placeholder="Telephone entreprise"
+                      value={telephone}
+                      onChange={(e) => setTelephone(e.target.value)}
+                      className="border-border bg-secondary pl-10"
+                      required
                     />
                   </div>
                 </>
@@ -252,7 +348,7 @@ const EntrepriseAuth = () => {
                   onChange={(e) => setPassword(e.target.value)}
                   className="border-border bg-secondary pl-10"
                   required
-                  minLength={6}
+                  minLength={isLogin ? 1 : 12}
                 />
               </div>
 
@@ -272,9 +368,23 @@ const EntrepriseAuth = () => {
                 {loading ? "Chargement..." : isLogin ? "Se connecter" : "Commencer l'essai gratuit"}
               </Button>
 
+              {isLogin && (
+                <button
+                  type="button"
+                  onClick={handleResendConfirmation}
+                  className="w-full text-sm font-medium text-primary transition-colors hover:underline disabled:cursor-not-allowed disabled:text-muted-foreground"
+                  disabled={loading || !email}
+                >
+                  Renvoyer l'email de confirmation
+                </button>
+              )}
+
               {!isLogin && (
                 <p className="text-center text-xs text-muted-foreground">
-                  En créant un compte, vous acceptez nos <a href="/cgu" className="text-primary hover:underline">CGU</a>.
+                  En créant un compte, vous acceptez nos{" "}
+                  <a href="/cgu" className="text-primary hover:underline">CGU</a>{" "}
+                  et notre{" "}
+                  <a href="/confidentialite" className="text-primary hover:underline">politique de confidentialité</a>.
                   Le SIRET est utilisé uniquement pour vérifier votre identité.
                 </p>
               )}

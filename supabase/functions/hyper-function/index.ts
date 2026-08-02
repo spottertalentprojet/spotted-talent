@@ -198,8 +198,8 @@ serve(async (req) => {
     html = emailLayout("Nouvelle candidature recue", `<p>${talentName} vient de postuler a votre offre <strong>${offerTitle}</strong>.</p>`, "Voir la candidature", "https://www.spottedtalent.fr/entreprise/dashboard?tab=candidats");
   } else if (body.type === "new_message") {
     const senderName = senderProfile.role === "entreprise" ? companyName : talentName;
-    subject = "Nouveau message sur Spotted Talent";
-    html = emailLayout("Vous avez un nouveau message", `<p><strong>${senderName}</strong> vous a envoye un message concernant <strong>${offerTitle}</strong>.</p>`, "Ouvrir la messagerie", `https://www.spottedtalent.fr/${recipientProfile.role === "entreprise" ? "entreprise" : "talent"}/dashboard?tab=messagerie`);
+    subject = "Nouvel échange de candidature sur Spotted Talent";
+    html = emailLayout("Vous avez reçu une nouvelle réponse", `<p><strong>${senderName}</strong> vous a contacte au sujet de <strong>${offerTitle}</strong>.</p>`, "Ouvrir mes échanges", `https://www.spottedtalent.fr/${recipientProfile.role === "entreprise" ? "entreprise" : "talent"}/dashboard?tab=messagerie`);
   } else {
     const statusConfig: Record<string, { title: string; subject: string; message: string }> = {
       envoyee: { title: "Candidature en attente", subject: "Candidature en attente", message: "Votre candidature est en cours d'examen." },

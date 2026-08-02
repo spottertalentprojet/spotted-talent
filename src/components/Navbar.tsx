@@ -31,7 +31,7 @@ const Navbar = () => {
               Je suis un talent
             </Button>
           </Link>
-          <Link to="/entreprise-info">
+          <Link to="/entreprise">
             <Button variant="glow" size="sm">
               Espace Entreprise
             </Button>
@@ -64,7 +64,7 @@ const Navbar = () => {
               Je suis un talent
             </Button>
           </Link>
-          <Link to="/entreprise-info" className="block" onClick={() => setOpen(false)}>
+          <Link to="/entreprise" className="block" onClick={() => setOpen(false)}>
             <Button variant="glow" size="sm" className="w-full">
               Espace Entreprise
             </Button>

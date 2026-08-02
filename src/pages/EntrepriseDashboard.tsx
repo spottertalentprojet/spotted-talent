@@ -1,14 +1,22 @@
-﻿import { emailCandidatureStatut, emailNouveauMessage, emailOffrePubliee } from "@/lib/emails";
+import { emailCandidatureStatut, emailNouveauMessage, emailOffrePubliee } from "@/lib/emails";
 import { useAuth } from "@/contexts/AuthContext";
 import { useNavigate } from "react-router-dom";
 import { Button } from "@/components/ui/button";
+import { DOCUMENT_ACCEPT_ATTRIBUTE, formatStoredMessageText, sanitizeStorageFileName, validateDocumentFile } from "@/lib/utils";
+import { deletePrivateDocument, logDocumentAccess, openPrivateDocument, uploadPrivateDocument } from "@/lib/documentSecurity";
 import ConfirmActionDialog from "@/components/ConfirmActionDialog";
-import { Sparkles, Wand2, Users, BarChart3, LogOut, Building2, Plus, FileText, Camera, Trash2, CheckCircle, Eye, EyeOff, Send, MessageSquare, ChevronDown, Search, MapPin, Euro, GraduationCap, Calendar, Briefcase, Wrench, Mail, Check, X, Pencil, Menu, ArrowLeft, CreditCard, Lock, Download } from "lucide-react";
+import AccountSecurityPanel from "@/components/AccountSecurityPanel";
+import ThemeToggle from "@/components/ThemeToggle";
+import OfferDescription, { getOfferDescriptionPreview } from "@/components/OfferDescription";
+import { Sparkles, Wand2, Users, BarChart3, LogOut, Building2, Plus, FileText, Camera, Trash2, CheckCircle, Eye, EyeOff, Send, MessageSquare, ChevronDown, ChevronUp, Search, MapPin, Euro, GraduationCap, Calendar, Briefcase, Wrench, Mail, Check, X, Pencil, Menu, ArrowLeft, CreditCard, Lock, Download, ShieldCheck, Image as ImageIcon } from "lucide-react";
 import { useEffect, useMemo, useState, useRef } from "react";
 import { toast } from "sonner";
 import { supabase } from "@/integrations/supabase/client";
 import { emailNouvelleOffreTalent } from "@/lib/emails";
 import { requestAiContent } from "@/lib/aiAssistant";
+import { translateAppError } from "@/lib/authMessages";
+import { isCandidateExchangeClosed } from "@/lib/candidateExchange";
+import { COMPANY_COVER_FILE_NAME, getCompanyCoverPath, getCompanyCoverPublicUrl, validateCompanyCoverImage } from "@/lib/companyMedia";
 import { REQUESTABLE_DOCUMENTS, getRequestStatusMeta } from "@/lib/documentRequests";
 import {
   formatTalentAvailabilityLabel,
@@ -113,14 +121,42 @@ const DISPLAY_LABELS: Record<string, string> = {
 
 const formatDisplayLabel = (value?: string | null) => {
   if (!value) return "";
-  return DISPLAY_LABELS[value] || value;
+  const cleaned = formatStoredMessageText(value);
+  return DISPLAY_LABELS[cleaned] || cleaned;
 };
 
 const formatDisplayList = (value?: string | null) => {
   if (!value) return "";
-  return value
+  return formatStoredMessageText(value)
     .split(",")
     .map((item) => formatDisplayLabel(item.trim()))
+    .join(", ");
+};
+
+const normalizeChoiceKey = (value: string) =>
+  formatStoredMessageText(value)
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .toLowerCase()
+    .trim();
+
+const splitStoredChoices = (value?: string | null) =>
+  formatStoredMessageText(value)
+    .split(",")
+    .map((item) => item.trim())
+    .filter(Boolean);
+
+const serializeStoredChoices = (choices: string[]) => {
+  const seen = new Set<string>();
+  return choices
+    .map((item) => formatDisplayLabel(item).trim())
+    .filter(Boolean)
+    .filter((item) => {
+      const key = normalizeChoiceKey(item);
+      if (seen.has(key)) return false;
+      seen.add(key);
+      return true;
+    })
     .join(", ");
 };
 
@@ -350,6 +386,122 @@ const SecteurSelect = ({ value, onChange }: { value: string; onChange: (v: strin
   );
 };
 
+const SecteursMultiSelect = ({ value, onChange }: { value: string; onChange: (v: string) => void }) => {
+  const [open, setOpen] = useState(false);
+  const [recherche, setRecherche] = useState("");
+  const ref = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    const handler = (e: MouseEvent) => {
+      if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false);
+    };
+    document.addEventListener("mousedown", handler);
+    return () => document.removeEventListener("mousedown", handler);
+  }, []);
+
+  const selected = useMemo(() => splitStoredChoices(value), [value]);
+  const selectedKeys = useMemo(() => new Set(selected.map(normalizeChoiceKey)), [selected]);
+  const searchKey = normalizeChoiceKey(recherche);
+  const filtres = SECTEURS.filter((secteurOption) => normalizeChoiceKey(secteurOption).includes(searchKey));
+  const canAddCustom = Boolean(searchKey) && !selectedKeys.has(searchKey) && !SECTEURS.some((secteurOption) => normalizeChoiceKey(secteurOption) === searchKey);
+
+  const updateChoices = (choices: string[]) => onChange(serializeStoredChoices(choices));
+
+  const toggleChoice = (choice: string) => {
+    const key = normalizeChoiceKey(choice);
+    const nextChoices = selectedKeys.has(key)
+      ? selected.filter((item) => normalizeChoiceKey(item) !== key)
+      : [...selected, choice];
+    updateChoices(nextChoices);
+  };
+
+  const removeChoice = (choice: string) => {
+    const key = normalizeChoiceKey(choice);
+    updateChoices(selected.filter((item) => normalizeChoiceKey(item) !== key));
+  };
+
+  const addCustomChoice = () => {
+    const customChoice = recherche.trim();
+    if (!customChoice) return;
+    updateChoices([...selected, customChoice]);
+    setRecherche("");
+  };
+
+  return (
+    <div ref={ref} className="relative">
+      <div className="rounded-lg border border-border bg-secondary p-2 transition-colors focus-within:border-accent/50">
+        {selected.length > 0 && (
+          <div className="mb-2 flex flex-wrap gap-2">
+            {selected.map((choice) => (
+              <span key={normalizeChoiceKey(choice)} className="inline-flex items-center gap-1 rounded-full border border-accent/20 bg-accent/10 px-2.5 py-1 text-xs font-semibold text-accent">
+                {formatDisplayLabel(choice)}
+                <button type="button" onClick={() => removeChoice(choice)} className="rounded-full p-0.5 text-accent/70 hover:bg-accent/10 hover:text-accent" aria-label={`Retirer ${formatDisplayLabel(choice)}`}>
+                  <X className="h-3 w-3" />
+                </button>
+              </span>
+            ))}
+          </div>
+        )}
+        <button type="button" onClick={() => setOpen(!open)} className="flex w-full items-center justify-between rounded-md px-1 py-1 text-left text-sm focus:outline-none">
+          <span className={selected.length ? "text-foreground" : "text-muted-foreground"}>
+            {selected.length ? `${selected.length} secteur(s) sélectionné(s)` : "Ajouter un ou plusieurs secteurs..."}
+          </span>
+          <ChevronDown className={`h-4 w-4 text-muted-foreground transition-transform ${open ? "rotate-180" : ""}`} />
+        </button>
+      </div>
+
+      {open && (
+        <div className="absolute z-50 mt-1 w-full overflow-hidden rounded-lg border border-border bg-background shadow-xl">
+          <div className="border-b border-border p-2">
+            <div className="relative">
+              <Search className="absolute left-2 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-muted-foreground" />
+              <input
+                autoFocus
+                value={recherche}
+                onChange={(e) => setRecherche(e.target.value)}
+                className="w-full rounded-md bg-secondary py-1.5 pl-8 pr-3 text-sm focus:outline-none"
+                placeholder="Rechercher ou ajouter un secteur..."
+              />
+            </div>
+          </div>
+          <div className="max-h-56 overflow-y-auto">
+            {canAddCustom && (
+              <button type="button" onClick={addCustomChoice} className="w-full border-b border-border/50 px-3 py-2 text-left text-sm font-semibold text-accent hover:bg-secondary">
+                Ajouter "{recherche.trim()}"
+              </button>
+            )}
+            {selected.length > 0 && (
+              <button type="button" onClick={() => updateChoices([])} className="w-full px-3 py-2 text-left text-xs text-muted-foreground hover:bg-secondary">
+                Effacer tous les secteurs
+              </button>
+            )}
+            {filtres.length === 0 ? (
+              <p className="py-3 text-center text-xs text-muted-foreground">Aucun résultat</p>
+            ) : (
+              filtres.map((secteurOption) => {
+                const selectedOption = selectedKeys.has(normalizeChoiceKey(secteurOption));
+                return (
+                  <button
+                    key={secteurOption}
+                    type="button"
+                    onClick={() => toggleChoice(secteurOption)}
+                    className={`flex w-full items-center gap-2 px-3 py-2 text-left text-sm transition-colors hover:bg-secondary ${selectedOption ? "bg-accent/5 text-accent" : ""}`}
+                  >
+                    <span className="flex h-4 w-4 items-center justify-center">
+                      {selectedOption && <Check className="h-3.5 w-3.5" />}
+                    </span>
+                    {formatDisplayLabel(secteurOption)}
+                  </button>
+                );
+              })
+            )}
+          </div>
+        </div>
+      )}
+    </div>
+  );
+};
+
 const tabs = [
   { id: "dashboard", label: "Dashboard", icon: BarChart3 },
   { id: "profil", label: "Mon Entreprise", icon: Building2 },
@@ -357,9 +509,26 @@ const tabs = [
   { id: "mes-offres", label: "Mes offres", icon: Eye },
   { id: "abonnement", label: "Abonnement", icon: CreditCard },
   { id: "candidats", label: "Candidatures reçues", icon: Users },
-  { id: "messagerie", label: "Messagerie", icon: MessageSquare },
+  { id: "messagerie", label: "Échanges candidats", icon: MessageSquare },
   { id: "documents", label: "Documents", icon: FileText },
 ];
+
+const ENTREPRISE_ACTIVE_TAB_STORAGE_KEY = "spotted-talent:entreprise-active-tab";
+
+const isEntrepriseTabId = (value: string | null) =>
+  Boolean(value && tabs.some((tab) => tab.id === value));
+
+const getInitialEntrepriseTab = () => {
+  if (typeof window === "undefined") return "dashboard";
+
+  const queryTab = new URLSearchParams(window.location.search).get("tab");
+  if (isEntrepriseTabId(queryTab)) return queryTab as string;
+
+  const storedTab = window.localStorage.getItem(ENTREPRISE_ACTIVE_TAB_STORAGE_KEY);
+  if (isEntrepriseTabId(storedTab)) return storedTab as string;
+
+  return "dashboard";
+};
 
 const readEntrepriseSignalMap = (key: string): Record<string, boolean> => {
   if (typeof window === "undefined") return {};
@@ -380,9 +549,9 @@ const writeEntrepriseSignalMap = (key: string, value: Record<string, boolean>) =
 const EntrepriseDashboard = () => {
   const { user, profile, loading, signOut } = useAuth();
   const navigate = useNavigate();
-  const params = new URLSearchParams(window.location.search);
-  const [activeTab, setActiveTab] = useState(params.get("tab") || "dashboard");
+  const [activeTab, setActiveTab] = useState(getInitialEntrepriseTab);
   const [avatarUrl, setAvatarUrl] = useState<string | null>(null);
+  const [coverUrl, setCoverUrl] = useState<string | null>(null);
   const [nbOffres, setNbOffres] = useState(0);
   const [nbCandidatures, setNbCandidatures] = useState(0);
   const [nbMessagesNonLus, setNbMessagesNonLus] = useState(0);
@@ -395,7 +564,26 @@ const EntrepriseDashboard = () => {
   const effectivePlanId = billingState ? getEffectiveBillingPlanId(billingState) : "starter";
   const planEntitlements = getBillingPlanEntitlements(effectivePlanId);
 
-  useEffect(() => { if (!loading && !user) navigate("/entreprise"); }, [loading, user, navigate]);
+  useEffect(() => { if (!loading && !user) navigate("/entreprise/connexion"); }, [loading, user, navigate]);
+
+  useEffect(() => {
+    if (typeof window === "undefined" || !isEntrepriseTabId(activeTab)) return;
+
+    window.localStorage.setItem(ENTREPRISE_ACTIVE_TAB_STORAGE_KEY, activeTab);
+
+    const url = new URL(window.location.href);
+    if (activeTab === "dashboard") {
+      url.searchParams.delete("tab");
+    } else {
+      url.searchParams.set("tab", activeTab);
+    }
+
+    const nextUrl = `${url.pathname}${url.search}${url.hash}`;
+    const currentUrl = `${window.location.pathname}${window.location.search}${window.location.hash}`;
+    if (nextUrl !== currentUrl) {
+      window.history.replaceState({}, "", nextUrl);
+    }
+  }, [activeTab]);
 
   useEffect(() => {
     if (!user) return;
@@ -486,9 +674,16 @@ const EntrepriseDashboard = () => {
       const chargerAvatar = async () => {
         const { data: list } = await supabase.storage.from("avatars").list(user.id);
         if (list && list.length > 0) {
-          const fichier = list[0];
-          const { data } = supabase.storage.from("avatars").getPublicUrl(`${user.id}/${fichier.name}`);
-          setAvatarUrl(data.publicUrl + "?t=" + Date.now());
+          const avatarFile = list.find((fichier) => fichier.name.startsWith("avatar."));
+          if (avatarFile) {
+            const { data } = supabase.storage.from("avatars").getPublicUrl(`${user.id}/${avatarFile.name}`);
+            setAvatarUrl(data.publicUrl + "?t=" + Date.now());
+          }
+
+          const coverFile = list.find((fichier) => fichier.name === COMPANY_COVER_FILE_NAME);
+          if (coverFile) {
+            setCoverUrl(getCompanyCoverPublicUrl(user.id, Date.now()));
+          }
         }
       };
       const chargerStats = async () => {
@@ -547,7 +742,8 @@ const EntrepriseDashboard = () => {
   if (loading) return (<div className="min-h-screen bg-background flex items-center justify-center text-muted-foreground">Chargement...</div>);
   if (user && !billingState) return (<div className="min-h-screen bg-background flex items-center justify-center text-muted-foreground">Chargement...</div>);
 
-  const candidatureIdFromUrl = params.get("candidature");
+  const candidatureIdFromUrl =
+    typeof window === "undefined" ? null : new URLSearchParams(window.location.search).get("candidature");
   const billingTrialDaysLeft = billingState
     ? Math.max(0, Math.ceil((new Date(billingState.trialEndsAt).getTime() - Date.now()) / (1000 * 60 * 60 * 24)))
     : 0;
@@ -651,7 +847,11 @@ const EntrepriseDashboard = () => {
             </button>
           )})}
         </nav>
-        <div className="p-4 border-t border-border/50">
+        <div className="border-t border-border/50 p-4">
+          <div className="mb-2 flex items-center justify-between rounded-xl border border-border/60 bg-background/70 px-3 py-2">
+            <span className="text-xs font-medium text-muted-foreground">Apparence</span>
+            <ThemeToggle className="border-0 bg-transparent p-0 shadow-none [&_button]:h-7 [&_button]:w-7" />
+          </div>
           <Button variant="ghost-glow" size="sm" className="w-full" onClick={async () => { await signOut(); navigate("/"); }}>
             <LogOut className="w-4 h-4 mr-2" /> Déconnexion
           </Button>
@@ -675,9 +875,9 @@ const EntrepriseDashboard = () => {
           </div>
         </div>
         {activeTab === "dashboard" && <DashboardHome profile={profile} nbOffres={nbOffres} nbCandidatures={nbCandidatures} user={user} onNavigate={setActiveTab} />}
-        {activeTab === "profil" && <ProfilEntrepriseTab profile={profile} user={user} avatarUrl={avatarUrl} setAvatarUrl={setAvatarUrl} />}
+        {activeTab === "profil" && <ProfilEntrepriseTab profile={profile} user={user} avatarUrl={avatarUrl} setAvatarUrl={setAvatarUrl} coverUrl={coverUrl} setCoverUrl={setCoverUrl} />}
         {activeTab === "offres" && <OffresTab user={user} planId={effectivePlanId} entitlements={planEntitlements} onOffrePubliee={() => { setNbOffres(n => n + 1); setOffresRefreshToken((token) => token + 1); setActiveTab("mes-offres"); }} />}
-        {activeTab === "mes-offres" && <MesOffresTab user={user} planId={effectivePlanId} entitlements={planEntitlements} refreshToken={offresRefreshToken} onOffresChanged={setNbOffres} />}
+        {activeTab === "mes-offres" && <MesOffresTab user={user} planId={effectivePlanId} entitlements={planEntitlements} refreshToken={offresRefreshToken} onOffresChanged={setNbOffres} onOpenDraft={() => setActiveTab("offres")} />}
         {activeTab === "abonnement" && user && billingState && (
           <AbonnementEntrepriseTab
             user={user}
@@ -915,7 +1115,7 @@ const AbonnementEntrepriseTab = ({
       toast.success("Entreprise vérifiée. Les coordonnées officielles ont été ajoutées.");
     } catch (error: any) {
       console.error("siret_verification_error", error);
-      toast.error(error?.message || "La vérification du SIRET a échoué.");
+      toast.error(translateAppError(error?.message, "La vérification du SIRET a échoué."));
     } finally {
       setVerifyingSiret(false);
     }
@@ -979,7 +1179,7 @@ const AbonnementEntrepriseTab = ({
       window.location.href = data.url;
     } catch (error: any) {
       console.error("stripe_checkout_error", error);
-      toast.error(error?.message || "Checkout Stripe indisponible pour le moment. Réessayez dans quelques instants.");
+      toast.error(translateAppError(error?.message, "Checkout Stripe indisponible pour le moment. Réessayez dans quelques instants."));
     } finally {
       setCheckoutPlanId(null);
     }
@@ -1009,7 +1209,7 @@ const AbonnementEntrepriseTab = ({
       window.location.href = data.url;
     } catch (error: any) {
       console.error("stripe_portal_error", error);
-      toast.error(error?.message || "Portail Stripe indisponible pour le moment.");
+      toast.error(translateAppError(error?.message, "Portail Stripe indisponible pour le moment."));
     } finally {
       setOpeningPortal(false);
     }
@@ -1670,11 +1870,11 @@ const DashboardHome = ({ profile, nbOffres, nbCandidatures, user, onNavigate }: 
       cta: "Ouvrir le suivi",
     },
     {
-      title: "Reprendre la messagerie",
+      title: "Reprendre les échanges",
       description: "Relancez les échanges avec les talents prioritaires.",
       icon: MessageSquare,
       action: () => onNavigate?.("messagerie"),
-      cta: "Ouvrir les messages",
+      cta: "Ouvrir les échanges",
     },
     {
       title: "Gérer l'abonnement",
@@ -1739,7 +1939,7 @@ const DashboardHome = ({ profile, nbOffres, nbCandidatures, user, onNavigate }: 
         </div>
         <div className="dashboard-stat-card p-5">
           <div className="w-11 h-11 rounded-2xl bg-red-500/12 flex items-center justify-center mb-4"><MessageSquare className="w-5 h-5 text-red-400" /></div>
-          <p className="text-muted-foreground text-xs mb-1">Messages non lus</p>
+          <p className="text-muted-foreground text-xs mb-1">Réponses non lues</p>
           <p className="text-3xl font-bold gradient-text">{stats.messagesNonLus}</p>
           <p className="text-xs text-muted-foreground mt-1">À traiter rapidement</p>
         </div>
@@ -1791,7 +1991,7 @@ const DashboardHome = ({ profile, nbOffres, nbCandidatures, user, onNavigate }: 
   );
 };
 
-const ProfilEntrepriseTab = ({ profile, user, avatarUrl, setAvatarUrl }: any) => {
+const ProfilEntrepriseTab = ({ profile, user, avatarUrl, setAvatarUrl, coverUrl, setCoverUrl }: any) => {
   const [nomEntreprise, setNomEntreprise] = useState(profile?.full_name || "");
   const [secteur, setSecteur] = useState("");
   const [localisation, setLocalisation] = useState("");
@@ -1813,7 +2013,34 @@ const ProfilEntrepriseTab = ({ profile, user, avatarUrl, setAvatarUrl }: any) =>
       const { error } = await supabase.from("profiles").update({ full_name: nomEntreprise, secteur, localisation, bio: description }).eq("user_id", user.id);
       if (error) throw error;
       toast.success("Profil entreprise sauvegardé !");
-    } catch (err: any) { toast.error(err.message); } finally { setSaving(false); }
+    } catch (err: any) { toast.error(translateAppError(err?.message, "Impossible de sauvegarder le profil entreprise.")); } finally { setSaving(false); }
+  };
+
+  const uploadCover = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file || !user) return;
+
+    const validationError = validateCompanyCoverImage(file);
+    if (validationError) {
+      toast.error(validationError);
+      e.target.value = "";
+      return;
+    }
+
+    try {
+      const path = getCompanyCoverPath(user.id);
+      const { error } = await supabase.storage.from("avatars").upload(path, file, {
+        upsert: true,
+        contentType: file.type,
+      });
+      if (error) throw error;
+      setCoverUrl(getCompanyCoverPublicUrl(user.id, Date.now()));
+      toast.success("Couverture entreprise mise à jour !");
+    } catch (err: any) {
+      toast.error(translateAppError(err?.message, "Impossible d'ajouter cette couverture."));
+    } finally {
+      e.target.value = "";
+    }
   };
 
   const completion = [nomEntreprise, secteur, localisation, description].filter((value) => String(value || "").trim()).length;
@@ -1821,6 +2048,7 @@ const ProfilEntrepriseTab = ({ profile, user, avatarUrl, setAvatarUrl }: any) =>
 
   return (
     <div className="space-y-6">
+      <AccountSecurityPanel user={user} />
       <div className="dashboard-panel p-6 sm:p-7">
         <div className="grid gap-6 lg:grid-cols-[1.15fr_0.85fr] lg:items-center">
           <div>
@@ -1845,6 +2073,38 @@ const ProfilEntrepriseTab = ({ profile, user, avatarUrl, setAvatarUrl }: any) =>
       </div>
 
       <div className="dashboard-panel max-w-5xl p-5 sm:p-8">
+        <div className="mb-6 overflow-hidden rounded-2xl border border-border/70 bg-secondary/30">
+          <div className="relative h-40 sm:h-56">
+            {coverUrl ? (
+              <img
+                src={coverUrl}
+                alt="Couverture entreprise"
+                className="h-full w-full object-cover"
+                onError={() => setCoverUrl(null)}
+              />
+            ) : (
+              <div className="flex h-full w-full items-center justify-center bg-[linear-gradient(135deg,hsl(var(--primary)/0.12),hsl(var(--accent)/0.16),hsl(var(--secondary)))]">
+                <div className="text-center">
+                  <ImageIcon className="mx-auto h-10 w-10 text-accent/60" />
+                  <p className="mt-3 text-sm font-semibold text-foreground">Couverture entreprise</p>
+                  <p className="mt-1 text-xs text-muted-foreground">Ajoutez une image pour présenter votre univers.</p>
+                </div>
+              </div>
+            )}
+            <div className="absolute inset-x-0 bottom-0 flex items-end justify-between gap-3 bg-gradient-to-t from-background/90 via-background/35 to-transparent p-4">
+              <div>
+                <p className="text-xs font-semibold uppercase tracking-[0.2em] text-accent">Image publique</p>
+                <p className="mt-1 text-sm text-muted-foreground">Visible par les talents sur vos offres.</p>
+              </div>
+              <label className="inline-flex h-9 cursor-pointer items-center justify-center rounded-lg border border-border bg-background/90 px-3 text-sm font-semibold text-foreground shadow-sm transition-colors hover:border-accent/40">
+                <Camera className="mr-2 h-4 w-4" />
+                {coverUrl ? "Remplacer" : "Ajouter"}
+                <input type="file" accept="image/png,image/jpeg,image/webp" className="hidden" onChange={uploadCover} />
+              </label>
+            </div>
+          </div>
+        </div>
+
         <div className="grid gap-6 xl:grid-cols-[0.75fr_1.25fr]">
           <div className="space-y-4">
             <div className="dashboard-subcard p-5">
@@ -1894,8 +2154,11 @@ const ProfilEntrepriseTab = ({ profile, user, avatarUrl, setAvatarUrl }: any) =>
                   <input defaultValue={user?.email || ""} disabled className="w-full rounded-lg border border-border bg-secondary/50 px-3 py-2 text-sm text-muted-foreground" />
                 </div>
                 <div className="md:col-span-2">
-                  <label className="mb-1 block text-sm text-muted-foreground">Secteur d'activité</label>
-                  <SecteurSelect value={secteur} onChange={setSecteur} />
+                  <label className="mb-1 block text-sm text-muted-foreground">Secteurs d'activité</label>
+                  <SecteursMultiSelect value={secteur} onChange={setSecteur} />
+                  <p className="mt-2 text-xs text-muted-foreground">
+                    Vous pouvez ajouter plusieurs activités si votre entreprise intervient dans plusieurs domaines.
+                  </p>
                 </div>
                 <div className="md:col-span-2">
                   <label className="mb-1 block text-sm text-muted-foreground">Localisation</label>
@@ -1909,13 +2172,16 @@ const ProfilEntrepriseTab = ({ profile, user, avatarUrl, setAvatarUrl }: any) =>
             </div>
 
             <div className="dashboard-subcard p-5">
-              <label className="mb-1 block text-sm text-muted-foreground">Description</label>
+              <label className="mb-1 block text-sm text-muted-foreground">Présentation publique</label>
+              <p className="mb-3 text-xs leading-5 text-muted-foreground">
+                Ce texte peut être lu par les talents sur vos offres. Présentez votre activité, votre ambiance et vos points forts.
+              </p>
               <textarea
                 value={description}
                 onChange={(e) => setDescription(e.target.value)}
                 rows={5}
                 className="w-full resize-none rounded-lg border border-border bg-secondary px-3 py-2 text-sm focus:border-accent/50 focus:outline-none"
-                placeholder="Décrivez votre entreprise, votre activité et l'environnement proposé aux talents..."
+                placeholder="Ex. : équipe familiale, tournées locales, formation interne, matériel récent, valeurs de l'entreprise..."
               />
             </div>
 
@@ -1970,20 +2236,86 @@ const OffresTab = ({
   const [urgent, setUrgent] = useState(false);
   const [permisRequis, setPermisRequis] = useState<string[]>([]);
   const [activeOfferCount, setActiveOfferCount] = useState(0);
+  const [weeklyNewOfferCount, setWeeklyNewOfferCount] = useState(0);
   const [screeningQuestions, setScreeningQuestions] = useState<ScreeningQuestion[]>([]);
+  const [besoin, setBesoin] = useState("");
+  const [experience, setExperience] = useState("2 à 5 ans");
+  const [creationStep, setCreationStep] = useState<1 | 2 | 3>(1);
+  const [showAdvancedDetails, setShowAdvancedDetails] = useState(false);
+  const [editingGeneratedOffer, setEditingGeneratedOffer] = useState(false);
+  const [lastDraftSavedAt, setLastDraftSavedAt] = useState<string | null>(null);
+  const offerDraftStorageKey = user?.id ? `spotted-talent:offer-ai-draft:${user.id}` : "";
+
+  useEffect(() => {
+    if (!user) return;
+    const fetchOfferCounters = async () => {
+      const sevenDaysAgo = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString();
+      const [activeResult, weeklyResult] = await Promise.all([
+        supabase
+          .from("offres")
+          .select("*", { count: "exact", head: true })
+          .eq("entreprise_id", user.id)
+          .eq("statut", "active"),
+        supabase
+          .from("offres")
+          .select("*", { count: "exact", head: true })
+          .eq("entreprise_id", user.id)
+          .gte("created_at", sevenDaysAgo),
+      ]);
+
+      if (activeResult.error) console.error("Erreur compteur offres actives:", activeResult.error);
+      if (weeklyResult.error) console.error("Erreur compteur offres hebdomadaire:", weeklyResult.error);
+
+      setActiveOfferCount(activeResult.count || 0);
+      setWeeklyNewOfferCount(weeklyResult.count || 0);
+    };
+
+    void fetchOfferCounters();
+  }, [user]);
 
   useEffect(() => {
     if (!user) return;
     void supabase
-      .from("offres")
-      .select("*", { count: "exact", head: true })
-      .eq("entreprise_id", user.id)
-      .eq("statut", "active")
-      .then(({ count }) => setActiveOfferCount(count || 0));
+      .from("profiles")
+      .select("company_name, full_name")
+      .eq("user_id", user.id)
+      .maybeSingle()
+      .then(({ data }) => setEntreprise((current) => current || data?.company_name || data?.full_name || ""));
   }, [user]);
+
+  useEffect(() => {
+    if (!offerDraftStorageKey || typeof window === "undefined") return;
+    try {
+      const storedDraft = window.localStorage.getItem(offerDraftStorageKey);
+      if (!storedDraft) return;
+      const draft = JSON.parse(storedDraft);
+      if (typeof draft.besoin === "string") setBesoin(draft.besoin);
+      if (typeof draft.poste === "string") setPoste(draft.poste);
+      if (typeof draft.entreprise === "string") setEntreprise(draft.entreprise);
+      if (typeof draft.competences === "string") setCompetences(draft.competences);
+      if (typeof draft.localisation === "string") setLocalisation(draft.localisation);
+      if (typeof draft.contrat === "string") setContrat(draft.contrat);
+      if (typeof draft.secteurOffre === "string") setSecteurOffre(draft.secteurOffre);
+      if (typeof draft.diplome === "string") setDiplome(draft.diplome);
+      if (typeof draft.experience === "string") setExperience(draft.experience);
+      if (typeof draft.salaireMin === "string") setSalaireMin(draft.salaireMin);
+      if (typeof draft.salaireMax === "string") setSalaireMax(draft.salaireMax);
+      if (Array.isArray(draft.avantages)) setAvantages(draft.avantages.filter((value: unknown) => typeof value === "string"));
+      if (Array.isArray(draft.permisRequis)) setPermisRequis(draft.permisRequis.filter((value: unknown) => typeof value === "string"));
+      if (typeof draft.offre === "string") setOffre(draft.offre);
+      if ([1, 2, 3].includes(draft.creationStep)) setCreationStep(draft.creationStep);
+      if (Array.isArray(draft.screeningQuestions)) setScreeningQuestions(draft.screeningQuestions.slice(0, 5));
+      if (typeof draft.urgent === "boolean") setUrgent(draft.urgent);
+      if (typeof draft.updatedAt === "string") setLastDraftSavedAt(draft.updatedAt);
+    } catch {
+      // Un brouillon local invalide ne doit jamais bloquer la création d'une offre.
+    }
+  }, [offerDraftStorageKey]);
 
   const activeOfferLimitReached =
     entitlements.maxActiveOffers !== null && activeOfferCount >= entitlements.maxActiveOffers;
+  const weeklyNewOfferLimitReached =
+    entitlements.maxWeeklyNewOffers !== null && weeklyNewOfferCount >= entitlements.maxWeeklyNewOffers;
 
   const addScreeningQuestion = () => {
     if (!entitlements.screeningQuestions || screeningQuestions.length >= 5) return;
@@ -1997,6 +2329,48 @@ const OffresTab = ({
   const listeAvantages = ["Mutuelle", "Tickets restaurant", "Télétravail", "Véhicule de fonction", "Prime annuelle", "RTT", "Formation continue", "Participation aux bénéfices", "Logement de fonction", "13e mois"];
   const toggleAvantage = (a: string) => { setAvantages(prev => prev.includes(a) ? prev.filter(x => x !== a) : [...prev, a]); };
 
+  const toggleCompetenceSuggestion = (suggestion: string) => {
+    setCompetences((current) => {
+      const values = current.split(",").map((value) => value.trim()).filter(Boolean);
+      return values.includes(suggestion)
+        ? values.filter((value) => value !== suggestion).join(", ")
+        : [...values, suggestion].join(", ");
+    });
+  };
+
+  const togglePermisSuggestion = (suggestion: string) => {
+    setPermisRequis((current) => current.includes(suggestion)
+      ? current.filter((value) => value !== suggestion)
+      : [...current, suggestion]);
+  };
+
+  const enregistrerBrouillon = () => {
+    if (!offerDraftStorageKey || typeof window === "undefined") return;
+    const updatedAt = new Date().toISOString();
+    window.localStorage.setItem(offerDraftStorageKey, JSON.stringify({
+      besoin,
+      poste,
+      entreprise,
+      competences,
+      localisation,
+      contrat,
+      secteurOffre,
+      diplome,
+      experience,
+      salaireMin,
+      salaireMax,
+      avantages,
+      permisRequis,
+      offre,
+      creationStep,
+      screeningQuestions,
+      urgent,
+      updatedAt,
+    }));
+    setLastDraftSavedAt(updatedAt);
+    toast.success("Brouillon enregistré sur cet appareil.");
+  };
+
   const genererOffre = async () => {
     if (!poste) return toast.error("Remplissez le poste");
     setLoading(true);
@@ -2008,12 +2382,17 @@ const OffresTab = ({
         localisation,
         secteur: secteurOffre,
         competences,
+        besoin,
+        experience,
         diplome: diplome !== "Sans diplôme" ? diplome : "",
         salaireMin,
         salaireMax,
         avantages,
+        permisRequis,
       });
       setOffre(contenu);
+      setCreationStep(3);
+      setEditingGeneratedOffer(false);
       toast.success("Offre générée !");
     } catch (err) { toast.error("Erreur lors de la génération."); } finally { setLoading(false); }
   };
@@ -2043,6 +2422,9 @@ const OffresTab = ({
     if (!offre || !poste) return toast.error("Générez d'abord une offre.");
     if (activeOfferLimitReached) {
       return toast.error(`La formule ${getPlanById(planId).name} autorise ${entitlements.maxActiveOffers} offre(s) active(s). Mettez une offre en pause ou changez de formule.`);
+    }
+    if (weeklyNewOfferLimitReached) {
+      return toast.error(`La formule ${getPlanById(planId).name} autorise ${entitlements.maxWeeklyNewOffers} nouvelle(s) annonce(s) sur 7 jours. Attendez le prochain créneau ou changez de formule.`);
     }
     const normalizedQuestions = screeningQuestions
       .map((question) => ({ ...question, label: question.label.trim() }))
@@ -2079,15 +2461,20 @@ const OffresTab = ({
           })
           .catch((err) => console.error("Erreur notifications offres:", err));
       }
+      setActiveOfferCount((count) => count + 1);
+      setWeeklyNewOfferCount((count) => count + 1);
+      if (offerDraftStorageKey && typeof window !== "undefined") window.localStorage.removeItem(offerDraftStorageKey);
       onOffrePubliee();
     } catch (err: any) {
       const message = String(err?.message || "");
       if (message.includes("active_offer_limit_reached")) {
         toast.error("La limite d'annonces actives de votre formule est atteinte.");
+      } else if (message.includes("weekly_offer_limit_reached")) {
+        toast.error("La limite de nouvelles annonces sur 7 jours est atteinte pour votre formule.");
       } else if (message.includes("feature_not_in_plan")) {
         toast.error("Cette option n'est pas incluse dans votre formule actuelle.");
       } else {
-        toast.error(message || "Impossible de publier cette offre.");
+        toast.error(translateAppError(message, "Impossible de publier cette offre."));
       }
     } finally { setPublishing(false); }
   };
@@ -2106,344 +2493,221 @@ const OffresTab = ({
   const offerStatusLabel = offre ? "Prête à être relue" : "À générer";
 
   return (
-    <div className="space-y-6">
-      <div className="dashboard-panel p-6 sm:p-7">
-        <div className="grid gap-6 lg:grid-cols-[1.15fr_0.85fr] lg:items-center">
+    <div className="space-y-4">
+      <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
+        <div>
+          <div className="mb-2 inline-flex items-center gap-2 rounded-full border border-accent/20 bg-accent/10 px-3 py-1 text-[11px] font-semibold uppercase tracking-[0.2em] text-accent">
+            <Wand2 className="h-3.5 w-3.5" /> Création assistée
+          </div>
+          <h2 className="text-2xl font-bold sm:text-3xl">Créer une offre avec l’IA</h2>
+          <p className="mt-1.5 text-sm text-muted-foreground">Décrivez votre besoin, l’IA prépare une annonce claire et professionnelle.</p>
+        </div>
+        <div className="flex items-center gap-3 rounded-xl border border-border/60 bg-secondary/20 px-4 py-3">
+          <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-accent/10 text-accent"><FileText className="h-4 w-4" /></div>
           <div>
-            <div className="mb-3 inline-flex items-center gap-2 rounded-full border border-accent/20 bg-accent/10 px-3 py-1 text-[11px] font-semibold uppercase tracking-[0.24em] text-accent">
-              <Wand2 className="h-3.5 w-3.5" />
-              Génération assistée par l'IA
-            </div>
-            <h2 className="text-2xl font-bold sm:text-3xl">Créer une offre avec l'IA</h2>
-            <p className="mt-2 max-w-2xl text-sm leading-6 text-muted-foreground sm:text-base">
-              Structurez votre besoin, laissez l'IA rédiger une base crédible, puis relisez et publiez une annonce
-              plus claire pour attirer de meilleurs profils.
+            <p className="text-xs font-semibold text-foreground">{offre ? "Offre prête à être relue" : lastDraftSavedAt ? "Brouillon enregistré" : "Brouillon en préparation"}</p>
+            <p className="mt-0.5 text-[11px] text-muted-foreground">
+              {lastDraftSavedAt ? `Sauvegardé le ${new Date(lastDraftSavedAt).toLocaleString("fr-FR", { dateStyle: "short", timeStyle: "short" })} · ${completionPercent}% complété` : `${completionPercent}% complété`}
             </p>
-          </div>
-          <div className="dashboard-subcard p-5">
-            <p className="text-xs font-semibold uppercase tracking-[0.24em] text-accent">Vue rapide</p>
-            <p className="mt-3 text-lg font-semibold text-foreground">
-              {offre ? "Votre annonce est prête à être relue puis publiée." : "Complétez les éléments clés pour lancer une génération propre."}
-            </p>
-            <div className="mt-4 h-2 overflow-hidden rounded-full bg-secondary">
-              <div className="h-full rounded-full bg-gradient-to-r from-primary via-accent to-accent transition-all" style={{ width: `${completionPercent}%` }} />
-            </div>
-            <div className="mt-4 grid gap-3 sm:grid-cols-2">
-              <div className="dashboard-subcard px-4 py-3">
-                <p className="text-xs uppercase tracking-wide text-muted-foreground">Complétion</p>
-                <p className="mt-2 text-2xl font-bold">{completionPercent}%</p>
-              </div>
-              <div className="dashboard-subcard px-4 py-3">
-                <p className="text-xs uppercase tracking-wide text-muted-foreground">État</p>
-                <p className="mt-2 text-sm font-semibold text-foreground">{offerStatusLabel}</p>
-              </div>
-            </div>
           </div>
         </div>
       </div>
 
-      <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
-        <div className="dashboard-stat-card border border-accent/20 bg-accent/10 p-4">
-          <div className="flex items-start justify-between gap-3">
-            <div>
-              <p className="text-xs font-semibold uppercase tracking-wide text-accent">Contrat</p>
-              <p className="mt-2 text-lg font-bold">{formatDisplayLabel(contrat) || "À définir"}</p>
-            </div>
-            <Briefcase className="h-5 w-5 text-accent" />
-          </div>
+      <div className="dashboard-panel overflow-hidden">
+        <div className="grid sm:grid-cols-3">
+          {([[1, "Le besoin"], [2, "Le profil"], [3, "Aperçu & publication"]] as const).map(([step, label], index) => (
+            <button
+              key={step}
+              type="button"
+              onClick={() => {
+                if (step === 3 && !offre) return toast.message("Générez d’abord votre offre pour accéder à la publication.");
+                setCreationStep(step);
+              }}
+              className={"relative flex items-center justify-center gap-3 border-b px-4 py-4 text-sm font-semibold transition-colors " + (creationStep === step ? "border-accent bg-accent/5 text-accent" : "border-border/60 text-muted-foreground hover:bg-secondary/30 hover:text-foreground") + (index > 0 ? " sm:border-l" : "")}
+            >
+              <span className={"flex h-7 w-7 items-center justify-center rounded-full text-xs font-bold " + (creationStep === step ? "bg-accent text-white" : "bg-secondary text-muted-foreground")}>{step}</span>
+              <span>{step}. {label}</span>
+            </button>
+          ))}
         </div>
-        <div className="dashboard-stat-card border border-border/60 bg-secondary/25 p-4">
-          <div className="flex items-start justify-between gap-3">
-            <div>
-              <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Localisation</p>
-              <p className="mt-2 text-lg font-bold">{localisation || "À préciser"}</p>
-            </div>
-            <MapPin className="h-5 w-5 text-accent" />
-          </div>
-        </div>
-        <div className="dashboard-stat-card border border-border/60 bg-secondary/25 p-4">
-          <div className="flex items-start justify-between gap-3">
-            <div>
-              <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Salaire</p>
-              <p className="mt-2 text-lg font-bold">{salaryLabel}</p>
-            </div>
-            <Euro className="h-5 w-5 text-accent" />
-          </div>
-        </div>
-        <div className={`dashboard-stat-card p-4 ${urgent ? "border border-red-500/20 bg-red-500/10" : "border border-border/60 bg-secondary/25"}`}>
-          <div className="flex items-start justify-between gap-3">
-            <div>
-              <p className={`text-xs font-semibold uppercase tracking-wide ${urgent ? "text-red-300" : "text-muted-foreground"}`}>Priorité</p>
-              <p className={`mt-2 text-lg font-bold ${urgent ? "text-red-300" : "text-foreground"}`}>{urgent ? "Urgente" : "Standard"}</p>
-            </div>
-            <Sparkles className={`h-5 w-5 ${urgent ? "text-red-300" : "text-accent"}`} />
-          </div>
-        </div>
+        <div className="h-1 bg-secondary"><div className="h-full bg-gradient-to-r from-primary to-accent transition-all" style={{ width: String((creationStep / 3) * 100) + "%" }} /></div>
       </div>
 
-      <div className="grid gap-6 xl:grid-cols-[1.05fr_0.95fr]">
-        <div className="dashboard-panel max-h-none space-y-5 overflow-visible p-5 sm:p-6 xl:max-h-[84vh] xl:overflow-y-auto">
-          <div className="dashboard-subcard p-5">
-            <p className="text-sm font-semibold text-foreground">1. Base de l'annonce</p>
-            <p className="mt-2 text-sm leading-6 text-muted-foreground">
-              Donnez d'abord le poste, l'entreprise et le contexte principal. C'est ce qui guide le ton et la précision du texte généré.
-            </p>
-            <div className="mt-4 grid gap-4 md:grid-cols-2">
-              <div className="md:col-span-2">
-                <label className="mb-1 block text-sm text-muted-foreground">Poste *</label>
-                <input value={poste} onChange={(e) => setPoste(e.target.value)} className="w-full rounded-lg border border-border bg-secondary px-3 py-2 text-sm focus:border-accent/50 focus:outline-none" placeholder="Ex. : Chauffeur PL, Cuisinier, Préparateur de commandes..." />
-              </div>
-              <div>
-                <label className="mb-1 block text-sm text-muted-foreground">Nom de l'entreprise</label>
-                <input value={entreprise} onChange={(e) => setEntreprise(e.target.value)} className="w-full rounded-lg border border-border bg-secondary px-3 py-2 text-sm focus:border-accent/50 focus:outline-none" placeholder="Ex. : Transport Martin" />
-              </div>
-              <div>
-                <label className="mb-1 block text-sm text-muted-foreground">Type de contrat</label>
-                <select value={contrat} onChange={(e) => setContrat(e.target.value)} className="w-full rounded-lg border border-border bg-secondary px-3 py-2 text-sm focus:border-accent/50 focus:outline-none">
-                  {CONTRATS.map((c) => <option key={c}>{c}</option>)}
-                </select>
-              </div>
-              <div className="md:col-span-2">
-                <label className="mb-1 block text-sm text-muted-foreground">Localisation</label>
-                <LocationAutocompleteInput
-                  value={localisation}
-                  onChange={setLocalisation}
-                  placeholder="Tapez une ville ou un code postal..."
-                />
-              </div>
-            </div>
-          </div>
+      <div className="flex items-center gap-3 rounded-xl border border-primary/20 bg-primary/[0.06] px-4 py-3">
+        <ShieldCheck className="h-5 w-5 shrink-0 text-primary" />
+        <p className="text-sm font-medium text-foreground">L’IA rédige, vous gardez le contrôle.</p>
+      </div>
 
-          <div className="dashboard-subcard p-5">
-            <p className="text-sm font-semibold text-foreground">2. Profil recherché</p>
-            <p className="mt-2 text-sm leading-6 text-muted-foreground">
-              Indiquez le secteur, le niveau attendu et les compétences clés pour aider l'IA à rédiger un profil crédible.
-            </p>
-            <div className="mt-4 grid gap-4 md:grid-cols-2">
-              <div>
-                <label className="mb-1 block text-sm text-muted-foreground">Secteur d'activité</label>
-                <SecteurSelect value={secteurOffre} onChange={setSecteurOffre} />
-              </div>
-              <div>
-                <label className="mb-1 block text-sm text-muted-foreground">Niveau de diplôme requis</label>
-                <select value={diplome} onChange={(e) => setDiplome(e.target.value)} className="w-full rounded-lg border border-border bg-secondary px-3 py-2 text-sm focus:border-accent/50 focus:outline-none">
-                  <option>Sans diplôme</option>
-                  <option>CAP / BEP</option>
-                  <option>Bac</option>
-                  <option>Bac +2 (BTS, DUT)</option>
-                  <option>Bac +3 (Licence)</option>
-                  <option>Bac +4 (Maîtrise)</option>
-                  <option>Bac +5 (Master, Ingénieur)</option>
-                  <option>Bac +8 (Doctorat)</option>
-                  <option>Permis B</option>
-                  <option>Permis C / CE</option>
-                  <option>CACES</option>
-                  <option>Habilitation électrique</option>
-                </select>
-              </div>
-              <div className="md:col-span-2">
-                <label className="mb-1 block text-sm text-muted-foreground">Compétences requises</label>
-                <textarea value={competences} onChange={(e) => setCompetences(e.target.value)} rows={3} className="w-full resize-none rounded-lg border border-border bg-secondary px-3 py-2 text-sm focus:border-accent/50 focus:outline-none" placeholder="Ex. : 2 ans d'expérience, relation client, permis B, manutention, esprit d'équipe..." />
-              </div>
-            </div>
-          </div>
+      <div className="grid gap-5 xl:grid-cols-[0.9fr_1.1fr]">
+        <section className="dashboard-panel p-5 sm:p-6">
+          {creationStep === 1 && (
+            <div className="space-y-4">
+              <div><h3 className="text-xl font-bold">Décrivez le poste</h3><p className="mt-1 text-sm text-muted-foreground">Quelques informations suffisent pour commencer.</p></div>
+              <textarea value={besoin} onChange={(event) => setBesoin(event.target.value)} rows={5} className="w-full resize-none rounded-xl border border-border bg-background/70 px-4 py-3 text-sm leading-6 outline-none transition-colors focus:border-accent/50" placeholder="Ex. : Nous recherchons un chauffeur poids lourd pour des livraisons régionales autour de Chambéry." />
 
-          <div className="dashboard-subcard p-5">
-            <p className="text-sm font-semibold text-foreground">3. Conditions et avantages</p>
-            <p className="mt-2 text-sm leading-6 text-muted-foreground">
-              Précisez la fourchette salariale, les avantages et les permis attendus pour obtenir une annonce plus complète.
-            </p>
-            <div className="mt-4 grid gap-4 md:grid-cols-2">
-              <div className="md:col-span-2">
-                <label className="mb-1 block text-sm text-muted-foreground">Salaire brut mensuel (EUR)</label>
-                <div className="grid gap-3 md:grid-cols-2">
-                  <input value={salaireMin} onChange={(e) => setSalaireMin(e.target.value)} type="number" className="w-full rounded-lg border border-border bg-secondary px-3 py-2 text-sm focus:border-accent/50 focus:outline-none" placeholder="Min. ex. : 1800" />
-                  <input value={salaireMax} onChange={(e) => setSalaireMax(e.target.value)} type="number" className="w-full rounded-lg border border-border bg-secondary px-3 py-2 text-sm focus:border-accent/50 focus:outline-none" placeholder="Max. ex. : 2500" />
-                </div>
+              <div className="grid gap-4 sm:grid-cols-2">
+                <label className="text-xs font-semibold text-muted-foreground">
+                  Intitulé du poste *
+                  <input value={poste} onChange={(event) => setPoste(event.target.value)} className="mt-2 h-11 w-full rounded-xl border border-border bg-background/70 px-3 text-sm text-foreground outline-none focus:border-accent/50" placeholder="Ex. : Chauffeur poids lourd" />
+                </label>
+                <label className="text-xs font-semibold text-muted-foreground">
+                  Localisation
+                  <div className="mt-2"><LocationAutocompleteInput value={localisation} onChange={setLocalisation} placeholder="Ville ou code postal..." /></div>
+                </label>
+                <label className="text-xs font-semibold text-muted-foreground">
+                  Contrat
+                  <select value={contrat} onChange={(event) => setContrat(event.target.value)} className="mt-2 h-11 w-full rounded-xl border border-border bg-background/70 px-3 text-sm text-foreground outline-none focus:border-accent/50">{CONTRATS.map((item) => <option key={item}>{item}</option>)}</select>
+                </label>
+                <label className="text-xs font-semibold text-muted-foreground">
+                  Expérience
+                  <select value={experience} onChange={(event) => setExperience(event.target.value)} className="mt-2 h-11 w-full rounded-xl border border-border bg-background/70 px-3 text-sm text-foreground outline-none focus:border-accent/50">
+                    <option>Débutant accepté</option><option>1 à 2 ans</option><option>2 à 5 ans</option><option>5 ans et plus</option>
+                  </select>
+                </label>
               </div>
-              <div className="md:col-span-2">
-                <label className="mb-2 block text-sm text-muted-foreground">Avantages proposés</label>
+
+              <div>
+                <p className="mb-2 text-xs font-semibold text-muted-foreground">Suggestions rapides</p>
                 <div className="flex flex-wrap gap-2">
-                  {listeAvantages.map((a) => (
-                    <button
-                      key={a}
-                      type="button"
-                      onClick={() => toggleAvantage(a)}
-                      className={`flex items-center gap-1 rounded-full border px-3 py-1.5 text-xs transition-all ${avantages.includes(a) ? "border-accent/40 bg-accent/20 text-accent" : "border-border bg-secondary text-muted-foreground hover:border-accent/30"}`}
-                    >
-                      {avantages.includes(a) && <Check className="h-3 w-3" />}
-                      {a}
+                  {[
+                    ...["Permis B", "Permis C", "Permis CE", "Permis D", "Permis DE", "FIMO", "FCO", "ADR"].map((label) => ({
+                      label,
+                      selected: permisRequis.includes(label),
+                      action: () => togglePermisSuggestion(label),
+                    })),
+                    { label: "Transport régional", selected: competences.split(",").map((item) => item.trim()).includes("Transport régional"), action: () => toggleCompetenceSuggestion("Transport régional") },
+                    { label: "Horaires de journée", selected: competences.split(",").map((item) => item.trim()).includes("Horaires de journée"), action: () => toggleCompetenceSuggestion("Horaires de journée") },
+                  ].map((suggestion) => (
+                    <button key={suggestion.label} type="button" onClick={suggestion.action} className={"rounded-full border px-3 py-1.5 text-xs font-semibold transition-colors " + (suggestion.selected ? "border-accent/40 bg-accent/15 text-accent" : "border-border bg-background text-muted-foreground hover:border-accent/30 hover:text-foreground")}>
+                      {suggestion.label} <span className="ml-1">{suggestion.selected ? "✓" : "+"}</span>
                     </button>
                   ))}
                 </div>
               </div>
-              <div className="md:col-span-2">
-                <label className="mb-2 block text-sm text-muted-foreground">Permis requis</label>
-                <div className="flex flex-wrap gap-2">
-                  {["Permis B", "Permis C", "Permis CE", "Permis D", "Permis DE", "FIMO", "FCO", "ADR", "CACES", "Habilitation électrique"].map((p) => (
-                    <button
-                      key={p}
-                      type="button"
-                      onClick={() => setPermisRequis((prev) => prev.includes(p) ? prev.filter((x) => x !== p) : [...prev, p])}
-                      className={`flex items-center gap-1 rounded-full border px-3 py-1.5 text-xs transition-all ${permisRequis.includes(p) ? "border-accent/40 bg-accent/20 text-accent" : "border-border bg-secondary text-muted-foreground hover:border-accent/30"}`}
-                    >
-                      {permisRequis.includes(p) && <Check className="h-3 w-3" />}
-                      {p}
-                    </button>
-                  ))}
-                </div>
-              </div>
+
+              <Button variant="glow" className="h-12 w-full" onClick={genererOffre} disabled={loading || !poste.trim()}>
+                <Sparkles className="mr-2 h-4 w-4" /> {loading ? "Génération en cours..." : "Générer mon offre"}
+              </Button>
+              <button type="button" onClick={() => { setCreationStep(2); setShowAdvancedDetails(true); }} className="mx-auto block text-sm font-semibold text-accent underline-offset-4 hover:underline">Ajouter plus de détails</button>
             </div>
-            <div className="mt-5 rounded-xl border border-border/70 bg-background/35 p-4">
-              <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
-                <div>
-                  <p className="text-sm font-semibold text-foreground">Questions de présélection</p>
-                  <p className="mt-1 text-xs leading-5 text-muted-foreground">
-                    {entitlements.screeningQuestions
-                      ? "Ajoutez jusqu'à 5 questions auxquelles le candidat répondra avant d'envoyer sa candidature."
-                      : "Disponible avec les formules Boost et Premium Intérim."}
-                  </p>
-                </div>
-                <Button
-                  type="button"
-                  variant="ghost-glow"
-                  size="sm"
-                  disabled={!entitlements.screeningQuestions || screeningQuestions.length >= 5}
-                  onClick={addScreeningQuestion}
-                  className="w-full sm:w-auto"
-                >
-                  <Plus className="mr-1 h-4 w-4" /> Ajouter une question
-                </Button>
+          )}
+
+          {creationStep === 2 && (
+            <div className="space-y-5">
+              <div><p className="text-xs font-semibold uppercase tracking-[0.2em] text-accent">Étape 2</p><h3 className="mt-2 text-xl font-bold">Précisez le profil</h3><p className="mt-1 text-sm text-muted-foreground">Ces détails rendent l’offre plus pertinente et évitent les informations inventées.</p></div>
+              <div className="grid gap-4 sm:grid-cols-2">
+                <label className="text-xs font-semibold text-muted-foreground">Secteur d’activité<div className="mt-2"><SecteurSelect value={secteurOffre} onChange={setSecteurOffre} /></div></label>
+                <label className="text-xs font-semibold text-muted-foreground">
+                  Diplôme requis
+                  <select value={diplome} onChange={(event) => setDiplome(event.target.value)} className="mt-2 h-11 w-full rounded-xl border border-border bg-background/70 px-3 text-sm text-foreground outline-none focus:border-accent/50">
+                    <option>Sans diplôme</option><option>CAP / BEP</option><option>Bac</option><option>Bac +2 (BTS, DUT)</option><option>Bac +3 (Licence)</option><option>Bac +5 (Master, Ingénieur)</option><option>Permis B</option><option>Permis C / CE</option><option>CACES</option>
+                  </select>
+                </label>
               </div>
-              {entitlements.screeningQuestions && screeningQuestions.length > 0 && (
-                <div className="mt-4 space-y-3">
-                  {screeningQuestions.map((question, index) => (
-                    <div key={question.id} className="rounded-xl border border-border/60 bg-secondary/30 p-3">
-                      <div className="flex items-start gap-3">
-                        <div className="min-w-0 flex-1">
-                          <label className="mb-1 block text-xs font-medium text-muted-foreground">Question {index + 1}</label>
-                          <input
-                            value={question.label}
-                            maxLength={240}
-                            onChange={(event) => updateScreeningQuestion(question.id, { label: event.target.value })}
-                            className="w-full rounded-lg border border-border bg-background/70 px-3 py-2 text-sm focus:border-accent/50 focus:outline-none"
-                            placeholder="Ex. : Êtes-vous disponible pour travailler le week-end ?"
-                          />
-                          <label className="mt-2 inline-flex items-center gap-2 text-xs text-muted-foreground">
-                            <input
-                              type="checkbox"
-                              checked={question.required}
-                              onChange={(event) => updateScreeningQuestion(question.id, { required: event.target.checked })}
-                            />
-                            Réponse obligatoire
-                          </label>
-                        </div>
-                        <button
-                          type="button"
-                          onClick={() => setScreeningQuestions((current) => current.filter((item) => item.id !== question.id))}
-                          className="inline-flex h-9 w-9 items-center justify-center rounded-lg border border-red-500/20 text-red-400 hover:bg-red-500/10"
-                          aria-label={`Supprimer la question ${index + 1}`}
-                        >
-                          <Trash2 className="h-4 w-4" />
-                        </button>
-                      </div>
+              <label className="block text-xs font-semibold text-muted-foreground">Compétences et contraintes importantes<textarea value={competences} onChange={(event) => setCompetences(event.target.value)} rows={3} className="mt-2 w-full resize-none rounded-xl border border-border bg-background/70 px-4 py-3 text-sm leading-6 text-foreground outline-none focus:border-accent/50" placeholder="Ex. : relation client, autonomie, manutention, travail le week-end..." /></label>
+              <div className="grid gap-4 sm:grid-cols-2">
+                <label className="text-xs font-semibold text-muted-foreground">Salaire minimum brut mensuel<input type="number" value={salaireMin} onChange={(event) => setSalaireMin(event.target.value)} className="mt-2 h-11 w-full rounded-xl border border-border bg-background/70 px-3 text-sm text-foreground outline-none focus:border-accent/50" placeholder="Ex. : 2200" /></label>
+                <label className="text-xs font-semibold text-muted-foreground">Salaire maximum brut mensuel<input type="number" value={salaireMax} onChange={(event) => setSalaireMax(event.target.value)} className="mt-2 h-11 w-full rounded-xl border border-border bg-background/70 px-3 text-sm text-foreground outline-none focus:border-accent/50" placeholder="Ex. : 2600" /></label>
+              </div>
+
+              <button type="button" onClick={() => setShowAdvancedDetails((current) => !current)} className="flex w-full items-center justify-between rounded-xl border border-border/70 bg-secondary/20 px-4 py-3 text-left text-sm font-semibold">
+                Options complémentaires {showAdvancedDetails ? <ChevronUp className="h-4 w-4 text-muted-foreground" /> : <ChevronDown className="h-4 w-4 text-muted-foreground" />}
+              </button>
+
+              {showAdvancedDetails && (
+                <div className="space-y-5 rounded-xl border border-border/70 bg-secondary/15 p-4">
+                  <label className="block text-xs font-semibold text-muted-foreground">Nom de l’entreprise<input value={entreprise} onChange={(event) => setEntreprise(event.target.value)} className="mt-2 h-11 w-full rounded-xl border border-border bg-background/70 px-3 text-sm text-foreground outline-none focus:border-accent/50" /></label>
+
+                  <div><p className="mb-2 text-xs font-semibold text-muted-foreground">Avantages proposés</p><div className="flex flex-wrap gap-2">
+                    {listeAvantages.map((item) => <button key={item} type="button" onClick={() => toggleAvantage(item)} className={"rounded-full border px-3 py-1.5 text-xs transition-colors " + (avantages.includes(item) ? "border-accent/40 bg-accent/15 text-accent" : "border-border bg-background text-muted-foreground hover:text-foreground")}>{avantages.includes(item) && <Check className="mr-1 inline h-3 w-3" />}{item}</button>)}
+                  </div></div>
+
+                  <div><p className="mb-2 text-xs font-semibold text-muted-foreground">Permis et habilitations</p><div className="flex flex-wrap gap-2">
+                    {["Permis B", "Permis BE", "Permis C1", "Permis C1E", "Permis C", "Permis CE", "Permis D1", "Permis D1E", "Permis D", "Permis DE", "FIMO marchandises", "FIMO voyageurs", "FCO marchandises", "FCO voyageurs", "ADR de base", "ADR citerne", "Carte conducteur", "CACES R482", "CACES R489", "CACES R490", "Habilitation électrique"].map((item) => <button key={item} type="button" onClick={() => togglePermisSuggestion(item)} className={"rounded-full border px-3 py-1.5 text-xs transition-colors " + (permisRequis.includes(item) ? "border-accent/40 bg-accent/15 text-accent" : "border-border bg-background text-muted-foreground hover:text-foreground")}>{permisRequis.includes(item) && <Check className="mr-1 inline h-3 w-3" />}{item}</button>)}
+                  </div></div>
+
+                  <div className="rounded-xl border border-border/60 bg-background/50 p-4">
+                    <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+                      <div><p className="text-sm font-semibold">Questions de présélection</p><p className="mt-1 text-xs leading-5 text-muted-foreground">{entitlements.screeningQuestions ? "Ajoutez jusqu’à 5 questions liées au poste." : "Disponible avec les formules Boost et Premium Intérim."}</p></div>
+                      <Button type="button" variant="ghost-glow" size="sm" disabled={!entitlements.screeningQuestions || screeningQuestions.length >= 5} onClick={addScreeningQuestion}><Plus className="mr-1 h-4 w-4" /> Ajouter</Button>
                     </div>
-                  ))}
+                    {entitlements.screeningQuestions && screeningQuestions.length > 0 && <div className="mt-3 space-y-2">
+                      {screeningQuestions.map((question, index) => <div key={question.id} className="flex items-start gap-2 rounded-xl border border-border/60 bg-secondary/20 p-3">
+                        <div className="min-w-0 flex-1"><input value={question.label} maxLength={240} onChange={(event) => updateScreeningQuestion(question.id, { label: event.target.value })} className="h-10 w-full rounded-lg border border-border bg-background px-3 text-sm outline-none focus:border-accent/50" placeholder={"Question " + (index + 1)} /><label className="mt-2 inline-flex items-center gap-2 text-xs text-muted-foreground"><input type="checkbox" checked={question.required} onChange={(event) => updateScreeningQuestion(question.id, { required: event.target.checked })} /> Réponse obligatoire</label></div>
+                        <button type="button" onClick={() => setScreeningQuestions((current) => current.filter((item) => item.id !== question.id))} className="rounded-lg p-2 text-red-500 hover:bg-red-500/10" aria-label="Supprimer la question"><Trash2 className="h-4 w-4" /></button>
+                      </div>)}
+                    </div>}
+                  </div>
+
+                  <button type="button" disabled={!entitlements.urgentBadge} onClick={() => entitlements.urgentBadge && setUrgent((current) => !current)} className={"flex w-full items-center gap-3 rounded-xl border p-3 text-left " + (entitlements.urgentBadge ? "border-red-500/20 bg-red-500/5" : "cursor-not-allowed border-border/60 bg-secondary/20 opacity-60")}>
+                    <span className={"flex h-5 w-5 items-center justify-center rounded border-2 " + (urgent ? "border-red-500 bg-red-500" : "border-muted-foreground/40")}>{urgent && <Check className="h-3 w-3 text-white" />}</span>
+                    <span className="text-sm font-semibold">Mettre l’offre en urgence</span>{!entitlements.urgentBadge && <span className="ml-auto text-xs text-muted-foreground">Boost ou Premium</span>}
+                  </button>
                 </div>
               )}
-            </div>
 
-            <button
-              type="button"
-              disabled={!entitlements.urgentBadge}
-              className={`mt-4 flex w-full items-center gap-3 rounded-lg border p-3 text-left ${entitlements.urgentBadge ? "border-red-500/20 bg-red-500/10" : "cursor-not-allowed border-border/60 bg-secondary/25 opacity-65"}`}
-              onClick={() => entitlements.urgentBadge && setUrgent(!urgent)}
-            >
-              <div className={`flex h-5 w-5 items-center justify-center rounded border-2 transition-all ${urgent ? "border-red-500 bg-red-500" : entitlements.urgentBadge ? "border-red-400" : "border-muted-foreground/40"}`}>
-                {urgent && <Check className="h-3 w-3 text-white" />}
-              </div>
-              <span className={entitlements.urgentBadge ? "text-sm font-medium text-red-400" : "text-sm font-medium text-muted-foreground"}>
-                Offre urgente
-              </span>
-              {!entitlements.urgentBadge && <span className="ml-auto text-xs text-muted-foreground">Boost ou Premium</span>}
-              {urgent && <span className="ml-auto rounded-full bg-red-500 px-2 py-0.5 text-xs font-bold text-white">URGENT</span>}
-            </button>
-          </div>
-
-          <Button variant="glow" className="w-full" onClick={genererOffre} disabled={loading}>
-            <Wand2 className="mr-2 h-4 w-4" />
-            {loading ? "Génération en cours..." : "Générer avec l'IA"}
-          </Button>
-        </div>
-
-        <div className="dashboard-panel flex flex-col p-5 sm:p-6">
-          <div className="mb-4 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-            <div>
-              <p className="text-[11px] font-semibold uppercase tracking-[0.24em] text-accent">Aperçu de l'annonce</p>
-              <h3 className="mt-2 text-xl font-bold">Offre générée</h3>
-              <p className="mt-1 text-sm text-muted-foreground">
-                Relisez, ajustez le ton si besoin, puis publiez quand le rendu vous semble clair.
-              </p>
-            </div>
-            {offre && (
-              <Button className="w-full sm:w-auto" variant="glow" size="sm" onClick={publierOffre} disabled={publishing || activeOfferLimitReached}>
-                <CheckCircle className="mr-1 h-4 w-4" />
-                {publishing ? "Publication..." : activeOfferLimitReached ? "Limite d'annonces atteinte" : "Publier l'offre"}
-              </Button>
-            )}
-          </div>
-
-          <div className="mb-4 grid gap-3 sm:grid-cols-2">
-            <div className="dashboard-subcard p-4">
-              <p className="text-xs uppercase tracking-wide text-muted-foreground">Résumé</p>
-              <p className="mt-2 font-semibold">{poste || "Poste à préciser"}</p>
-              <p className="mt-1 text-sm text-muted-foreground">{localisation || "Localisation à préciser"}</p>
-            </div>
-            <div className="dashboard-subcard p-4">
-              <p className="text-xs uppercase tracking-wide text-muted-foreground">Profil et cadre</p>
-              <p className="mt-2 text-sm font-semibold">{formatDisplayLabel(secteurOffre) || "Secteur à préciser"}</p>
-              <p className="mt-1 text-sm text-muted-foreground">{formatDisplayLabel(diplome) || "Niveau à préciser"}</p>
-            </div>
-            <div className="dashboard-subcard p-4">
-              <p className="text-xs uppercase tracking-wide text-muted-foreground">Salaire</p>
-              <p className="mt-2 text-sm font-semibold">{salaryLabel}</p>
-            </div>
-            <div className="dashboard-subcard p-4">
-              <p className="text-xs uppercase tracking-wide text-muted-foreground">Avantages et permis</p>
-              <p className="mt-2 text-sm font-semibold">{selectedAdvantages}</p>
-              <p className="mt-1 text-xs text-muted-foreground">{selectedPermis}</p>
-            </div>
-          </div>
-
-          {offre ? (
-            <div className="dashboard-subcard flex min-h-[360px] flex-1 flex-col p-4 sm:p-5">
-              <div className="mb-3 flex items-center justify-between gap-3">
-                <p className="text-sm font-semibold">Texte généré</p>
-                <span className="rounded-full border border-accent/20 bg-accent/10 px-3 py-1 text-[11px] font-semibold uppercase tracking-wide text-accent">
-                  Modifiable
-                </span>
-              </div>
-              <textarea
-                value={offre}
-                onChange={(e) => setOffre(e.target.value)}
-                className="min-h-[320px] flex-1 resize-none rounded-lg border border-border bg-secondary px-3 py-3 text-sm leading-6 focus:border-accent/50 focus:outline-none sm:min-h-[420px]"
-              />
-            </div>
-          ) : (
-            <div className="dashboard-subcard flex min-h-[360px] flex-1 items-center justify-center p-6 text-center text-sm text-muted-foreground">
-              <div className="max-w-sm">
-                <div className="mx-auto mb-4 flex h-16 w-16 items-center justify-center rounded-2xl bg-accent/10">
-                  <FileText className="h-8 w-8 text-accent" />
-                </div>
-                <p className="text-base font-semibold text-foreground">Votre offre apparaîtra ici</p>
-                <p className="mt-2 leading-6">
-                  Renseignez le formulaire, cliquez sur <span className="font-semibold text-foreground">Générer avec l'IA</span>,
-                  puis relisez tranquillement le texte avant publication.
-                </p>
+              <div className="flex flex-col gap-2 sm:flex-row">
+                <Button variant="ghost-glow" className="sm:w-auto" onClick={() => setCreationStep(1)}>Retour</Button>
+                <Button variant="glow" className="flex-1" onClick={genererOffre} disabled={loading || !poste.trim()}><Sparkles className="mr-2 h-4 w-4" /> {loading ? "Génération en cours..." : "Générer mon offre"}</Button>
               </div>
             </div>
           )}
-        </div>
+
+          {creationStep === 3 && (
+            <div className="flex min-h-[500px] flex-col justify-between gap-6">
+              <div>
+                <div className="flex h-14 w-14 items-center justify-center rounded-2xl bg-emerald-500/10 text-emerald-600 dark:text-emerald-300"><CheckCircle className="h-7 w-7" /></div>
+                <p className="mt-5 text-xs font-semibold uppercase tracking-[0.2em] text-emerald-600 dark:text-emerald-300">Étape 3</p>
+                <h3 className="mt-2 text-2xl font-bold">Votre offre est prête</h3>
+                <p className="mt-2 text-sm leading-6 text-muted-foreground">Relisez l’aperçu, modifiez le texte si nécessaire puis publiez lorsque tout vous convient.</p>
+                <div className="mt-6 grid gap-3 sm:grid-cols-2">
+                  <div className="rounded-xl border border-border/70 bg-secondary/20 p-4"><p className="text-xs text-muted-foreground">Poste</p><p className="mt-1 font-semibold">{poste || "À préciser"}</p></div>
+                  <div className="rounded-xl border border-border/70 bg-secondary/20 p-4"><p className="text-xs text-muted-foreground">Contrat</p><p className="mt-1 font-semibold">{contrat}</p></div>
+                  <div className="rounded-xl border border-border/70 bg-secondary/20 p-4"><p className="text-xs text-muted-foreground">Localisation</p><p className="mt-1 font-semibold">{localisation || "À préciser"}</p></div>
+                  <div className="rounded-xl border border-border/70 bg-secondary/20 p-4"><p className="text-xs text-muted-foreground">Salaire</p><p className="mt-1 font-semibold">{salaryLabel}</p></div>
+                </div>
+              </div>
+              <div className="flex flex-col gap-2 sm:flex-row"><Button variant="ghost-glow" className="flex-1" onClick={() => setCreationStep(1)}>Modifier le besoin</Button><Button variant="ghost-glow" className="flex-1" onClick={() => setCreationStep(2)}>Modifier le profil</Button></div>
+            </div>
+          )}
+        </section>
+
+        <section className="dashboard-panel flex min-h-[620px] flex-col p-5 sm:p-6">
+          <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+            <div><p className="text-xs font-semibold uppercase tracking-[0.2em] text-accent">Aperçu en direct</p><h3 className="mt-1 text-xl font-bold">Votre annonce</h3></div>
+            <span className={"w-fit rounded-full border px-3 py-1.5 text-xs font-semibold " + (completionPercent >= 80 ? "border-emerald-500/25 bg-emerald-500/10 text-emerald-600 dark:text-emerald-300" : "border-amber-500/25 bg-amber-500/10 text-amber-700 dark:text-amber-300")}>{offre ? "Prête" : "Complétée"} à {completionPercent} %</span>
+          </div>
+
+          <div className="mt-4 flex-1 rounded-xl border border-border/70 bg-background/60 p-4 sm:p-5">
+            <div className="flex items-start justify-between gap-3 border-b border-border/60 pb-4">
+              <div className="min-w-0"><h4 className="truncate text-xl font-bold sm:text-2xl">{poste || "Intitulé du poste"}</h4><p className="mt-1 text-sm font-semibold text-accent">{entreprise || "Votre entreprise"}</p><p className="mt-1 text-xs text-muted-foreground">{localisation || "Localisation à préciser"} · {contrat} · {salaryLabel}</p></div>
+              <button type="button" onClick={() => setCreationStep(1)} className="rounded-lg border border-border p-2 text-muted-foreground hover:bg-secondary hover:text-foreground" aria-label="Modifier les informations principales"><Pencil className="h-4 w-4" /></button>
+            </div>
+
+            {editingGeneratedOffer && offre ? (
+              <div className="mt-4">
+                <div className="mb-3 flex items-center justify-between gap-3"><p className="text-sm font-semibold">Texte complet modifiable</p><Button variant="ghost-glow" size="sm" onClick={() => setEditingGeneratedOffer(false)}>Terminer</Button></div>
+                <textarea value={offre} onChange={(event) => setOffre(event.target.value)} className="min-h-[390px] w-full resize-none rounded-xl border border-border bg-background px-4 py-3 text-sm leading-6 outline-none focus:border-accent/50" />
+              </div>
+            ) : (
+              <div className="divide-y divide-border/60">
+                <div className="py-4"><div className="flex items-center justify-between gap-3"><h5 className="font-bold">Vos missions</h5><button type="button" onClick={() => offre ? setEditingGeneratedOffer(true) : setCreationStep(1)} className="rounded-lg border border-border p-2 text-muted-foreground hover:bg-secondary hover:text-foreground"><Pencil className="h-3.5 w-3.5" /></button></div><p className="mt-2 whitespace-pre-line text-sm leading-6 text-muted-foreground">{besoin || "Décrivez le besoin et les principales missions pour enrichir cette section."}</p></div>
+                <div className="py-4"><div className="flex items-center justify-between gap-3"><h5 className="font-bold">Profil recherché</h5><button type="button" onClick={() => offre ? setEditingGeneratedOffer(true) : setCreationStep(2)} className="rounded-lg border border-border p-2 text-muted-foreground hover:bg-secondary hover:text-foreground"><Pencil className="h-3.5 w-3.5" /></button></div><p className="mt-2 text-sm leading-6 text-muted-foreground">{competences || "Compétences à préciser"} · {experience}{diplome !== "Sans diplôme" ? " · " + diplome : ""}{permisRequis.length > 0 ? " · " + selectedPermis : ""}</p></div>
+                <div className="py-4"><div className="flex items-center justify-between gap-3"><h5 className="font-bold">Ce que nous proposons</h5><button type="button" onClick={() => offre ? setEditingGeneratedOffer(true) : setCreationStep(2)} className="rounded-lg border border-border p-2 text-muted-foreground hover:bg-secondary hover:text-foreground"><Pencil className="h-3.5 w-3.5" /></button></div><p className="mt-2 text-sm leading-6 text-muted-foreground">{contrat} · {salaryLabel}{avantages.length > 0 ? " · " + selectedAdvantages : ""}</p></div>
+              </div>
+            )}
+
+            {offre && !editingGeneratedOffer && <button type="button" onClick={() => setEditingGeneratedOffer(true)} className="mt-4 flex w-full items-center justify-center gap-2 rounded-xl border border-accent/25 bg-accent/5 px-4 py-3 text-sm font-semibold text-accent hover:bg-accent/10"><Pencil className="h-4 w-4" /> Modifier le texte complet</button>}
+          </div>
+        </section>
+      </div>
+
+      <div className="dashboard-panel sticky bottom-3 z-20 flex flex-col gap-3 p-4 shadow-xl sm:flex-row sm:items-center sm:justify-end">
+        <Button variant="ghost-glow" onClick={enregistrerBrouillon}><FileText className="mr-2 h-4 w-4" /> Enregistrer le brouillon</Button>
+        <Button variant="ghost-glow" onClick={genererOffre} disabled={loading || !poste.trim()}><Sparkles className="mr-2 h-4 w-4" /> {offre ? "Améliorer avec l’IA" : "Générer avec l’IA"}</Button>
+        <Button variant="glow" onClick={publierOffre} disabled={!offre || publishing || activeOfferLimitReached || weeklyNewOfferLimitReached}>
+          <Send className="mr-2 h-4 w-4" /> {publishing ? "Publication..." : activeOfferLimitReached ? "Limite atteinte" : weeklyNewOfferLimitReached ? "Quota atteint" : "Publier l’offre"}
+        </Button>
       </div>
     </div>
   );
@@ -2494,7 +2758,7 @@ const FormulaireModification = ({
       if (error) throw error;
       toast.success("Offre mise à jour !");
       onSave();
-    } catch (err: any) { toast.error(err.message); } finally { setSaving(false); }
+    } catch (err: any) { toast.error(translateAppError(err?.message, "Impossible de sauvegarder cette offre.")); } finally { setSaving(false); }
   };
 
   return (
@@ -2584,13 +2848,25 @@ const FormulaireModification = ({
   );
 };
 
-const MesOffresTab = ({ user, entitlements, refreshToken = 0, onOffresChanged }: any) => {
+const MesOffresTab = ({ user, entitlements, refreshToken = 0, onOffresChanged, onOpenDraft }: any) => {
   const [offres, setOffres] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [offreEnEdition, setOffreEnEdition] = useState<string | null>(null);
   const [offreOuverte, setOffreOuverte] = useState<string | null>(null);
+  const [savedDraft, setSavedDraft] = useState<Record<string, any> | null>(null);
+  const offerDraftStorageKey = user?.id ? `spotted-talent:offer-ai-draft:${user.id}` : "";
 
   useEffect(() => { chargerOffres(); }, [user, refreshToken]);
+
+  useEffect(() => {
+    if (!offerDraftStorageKey || typeof window === "undefined") return;
+    try {
+      const rawDraft = window.localStorage.getItem(offerDraftStorageKey);
+      setSavedDraft(rawDraft ? JSON.parse(rawDraft) : null);
+    } catch {
+      setSavedDraft(null);
+    }
+  }, [offerDraftStorageKey, refreshToken]);
 
   const chargerOffres = async () => {
     if (!user) return;
@@ -2606,9 +2882,7 @@ const MesOffresTab = ({ user, entitlements, refreshToken = 0, onOffresChanged }:
     const newStatut = statut === "active" ? "inactive" : "active";
     const { error } = await supabase.from("offres").update({ statut: newStatut }).eq("id", id);
     if (error) {
-      toast.error(error.message.includes("active_offer_limit_reached")
-        ? "La limite d'annonces actives de votre formule est atteinte."
-        : "Impossible de modifier cette annonce.");
+      toast.error(translateAppError(error.message, "Impossible de modifier cette annonce."));
       return;
     }
     chargerOffres();
@@ -2616,26 +2890,14 @@ const MesOffresTab = ({ user, entitlements, refreshToken = 0, onOffresChanged }:
   };
 
   const supprimerOffre = async (id: string) => {
-    await supabase.from("offres").delete().eq("id", id);
+    const { error } = await supabase.from("offres").delete().eq("id", id);
+    if (error) {
+      toast.error(translateAppError(error.message, "Impossible de supprimer cette offre."));
+      return;
+    }
     toast.success("Offre supprimée.");
     chargerOffres();
   };
-
-  const formatterDescriptionOffre = (description?: string | null) => {
-    if (!description) return "";
-
-    return description
-      .replace(/\*\*/g, "")
-      .replace(
-        /\s+(Offre d'emploi|Entreprise|Type de contrat|Lieu de travail|Secteur d'activite|Secteur d'activité|Description|Competences|Compétences|Diplome|Diplôme|Permis requis|Avantages)\s*:/gi,
-        "\n$1 :",
-      )
-      .replace(/\n{3,}/g, "\n\n")
-      .trim();
-  };
-
-  const descriptionCourte = (description?: string | null) =>
-    formatterDescriptionOffre(description).replace(/\n+/g, " ");
 
   if (loading) return <div className="text-muted-foreground">Chargement...</div>;
 
@@ -2677,6 +2939,33 @@ const MesOffresTab = ({ user, entitlements, refreshToken = 0, onOffresChanged }:
         </div>
       </div>
 
+      {savedDraft && (
+        <div className="dashboard-panel border-accent/25 bg-accent/5 p-4 sm:p-5">
+          <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+            <div className="flex min-w-0 items-start gap-3">
+              <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-accent/15 text-accent">
+                <FileText className="h-5 w-5" />
+              </div>
+              <div className="min-w-0">
+                <div className="flex flex-wrap items-center gap-2">
+                  <p className="text-sm font-bold text-foreground">Brouillon en cours</p>
+                  <span className="rounded-full border border-accent/25 bg-accent/10 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-accent">Non publié</span>
+                </div>
+                <p className="mt-1 truncate text-sm text-muted-foreground">{savedDraft.poste || "Nouvelle offre"}{savedDraft.localisation ? ` · ${savedDraft.localisation}` : ""}</p>
+                <p className="mt-1 text-xs text-muted-foreground">
+                  {savedDraft.updatedAt
+                    ? `Enregistré le ${new Date(savedDraft.updatedAt).toLocaleString("fr-FR", { dateStyle: "short", timeStyle: "short" })}`
+                    : "Enregistré sur cet appareil"}
+                </p>
+              </div>
+            </div>
+            <Button type="button" variant="glow" onClick={onOpenDraft}>
+              <Pencil className="mr-2 h-4 w-4" /> Reprendre le brouillon
+            </Button>
+          </div>
+        </div>
+      )}
+
       <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
         <div className="dashboard-stat-card border border-accent/20 bg-accent/10 p-3">
           <p className="text-xs font-semibold uppercase tracking-wide text-accent">Total</p>
@@ -2709,19 +2998,19 @@ const MesOffresTab = ({ user, entitlements, refreshToken = 0, onOffresChanged }:
               <div className="grid gap-3 xl:grid-cols-[minmax(0,1fr)_300px] xl:items-start">
                 <div>
                   <div className="flex items-center gap-3 mb-2 flex-wrap">
-                    <h3 className="font-bold text-base">{offre.titre}</h3>
+                    <h3 className="font-bold text-base">{formatDisplayLabel(offre.titre) || "Offre sans titre"}</h3>
                     {offre.urgent && <span className="text-xs px-2 py-0.5 rounded-full bg-red-500 text-white font-bold animate-pulse">URGENT</span>}
                     <span className={`text-xs px-2 py-0.5 rounded-full border ${offre.statut === "active" ? "bg-green-500/10 text-green-400 border-green-500/20" : "bg-secondary text-muted-foreground border-border"}`}>{offre.statut === "active" ? "Active" : "Inactive"}</span>
                     <span className="text-xs px-2 py-0.5 rounded-full bg-accent/10 text-accent border border-accent/20">{formatDisplayLabel(offre.contrat)}</span>
                   </div>
                   <div className="flex gap-3 text-xs text-muted-foreground mb-1.5 flex-wrap">
-                    <span className="flex items-center gap-1"><MapPin className="w-3 h-3" /> {offre.localisation || "Non précisée"}</span>
+                    <span className="flex items-center gap-1"><MapPin className="w-3 h-3" /> {formatDisplayLabel(offre.localisation) || "Non précisée"}</span>
                     {offre.salaire_min && offre.salaire_max && <span className="flex items-center gap-1"><Euro className="w-3 h-3" /> {offre.salaire_min} - {offre.salaire_max}</span>}
                     {offre.diplome && !["Sans diplome", "Sans diplôme"].includes(offre.diplome) && <span className="flex items-center gap-1"><GraduationCap className="w-3 h-3" /> {formatDisplayLabel(offre.diplome)}</span>}
                     <span className="flex items-center gap-1"><Calendar className="w-3 h-3" /> {new Date(offre.created_at).toLocaleDateString("fr-FR")}</span>
                   </div>
                   {offre.avantages && <p className="text-xs text-green-400 mb-2 flex items-center gap-1"><CheckCircle className="w-3 h-3" /> {formatDisplayList(offre.avantages)}</p>}
-                  {offreEnEdition !== offre.id && <p className="text-xs leading-5 text-muted-foreground line-clamp-2">{descriptionCourte(offre.description)}</p>}
+                  {offreEnEdition !== offre.id && <p className="text-xs leading-5 text-muted-foreground line-clamp-2">{getOfferDescriptionPreview(offre.description)}</p>}
                 </div>
 
                 <div className="dashboard-subcard p-3 sm:p-5">
@@ -2810,9 +3099,7 @@ const MesOffresTab = ({ user, entitlements, refreshToken = 0, onOffresChanged }:
 
                   <div className="dashboard-subcard mt-3 p-3">
                     <p className="text-sm font-semibold">Description complète</p>
-                    <div className="mt-2 whitespace-pre-wrap text-xs leading-5 text-muted-foreground">
-                      {formatterDescriptionOffre(offre.description) || "Aucune description renseignée."}
-                    </div>
+                    <div className="mt-3"><OfferDescription description={offre.description} compact /></div>
                   </div>
                 </div>
               )}
@@ -2992,7 +3279,7 @@ const CandidatsTab = ({
             <h2 className="text-2xl font-bold sm:text-3xl">Candidatures reçues</h2>
             <p className="mt-2 max-w-2xl text-sm leading-6 text-muted-foreground sm:text-base">
               Tout le suivi candidat reste ici : tri, priorités, décisions, documents et bascule
-              rapide vers le profil complet ou la messagerie.
+              rapide vers le profil complet ou les échanges de candidature.
             </p>
             <Button
               type="button"
@@ -3115,7 +3402,7 @@ const CandidatsTab = ({
               <div className="grid gap-3 xl:grid-cols-[minmax(0,1fr)_300px] xl:items-start">
                 <div>
                   <div className="flex items-center gap-3 mb-2 flex-wrap">
-                    <h3 className="font-bold">{c.offre?.titre || "Offre"}</h3>
+                    <h3 className="font-bold">{formatDisplayLabel(c.offre?.titre) || "Offre"}</h3>
                     {entitlements.candidateMatching && (
                       <span className={`rounded-full border px-2 py-0.5 text-xs font-semibold ${
                         (c.matchScore || 0) >= 70
@@ -3141,7 +3428,7 @@ const CandidatsTab = ({
                   </div>
                   <div className="flex gap-3 text-xs text-muted-foreground mb-1.5 flex-wrap">
                     <span className="flex items-center gap-1"><FileText className="w-3 h-3" /> {formatDisplayLabel(c.offre?.contrat)}</span>
-                    <span className="flex items-center gap-1"><MapPin className="w-3 h-3" /> {c.offre?.localisation || "Non précisée"}</span>
+                    <span className="flex items-center gap-1"><MapPin className="w-3 h-3" /> {formatDisplayLabel(c.offre?.localisation) || "Non précisée"}</span>
                     <span className="flex items-center gap-1"><Calendar className="w-3 h-3" /> {new Date(c.created_at).toLocaleDateString("fr-FR")}</span>
                   </div>
                   {c.talentProfil ? (
@@ -3276,9 +3563,20 @@ const MessagerieTab = ({ user, candidatureIdFromUrl }: any) => {
     if (!offres || offres.length === 0) { setLoading(false); return; }
     const ids = offres.map((o: any) => o.id);
     const { data: cands } = await supabase.from("candidatures").select("*, offre:offre_id(titre)").in("offre_id", ids).order("created_at", { ascending: false });
+    const candidatureIds = (cands || []).map((candidature: any) => candidature.id);
+    const openedExchangeIds = new Set<string>();
+    if (candidatureIds.length > 0) {
+      const { data: openingMessages } = await supabase
+        .from("messages")
+        .select("candidature_id")
+        .eq("expedition_id", user.id)
+        .eq("automated", false)
+        .in("candidature_id", candidatureIds);
+      (openingMessages || []).forEach((message: any) => openedExchangeIds.add(message.candidature_id));
+    }
     const candsAvecNom = await Promise.all((cands || []).map(async (c: any) => {
       const { data: profil } = await supabase.from("profiles").select("full_name").eq("user_id", c.talent_id).single();
-      return { ...c, talentNom: profil?.full_name || "Talent" };
+      return { ...c, talentNom: profil?.full_name || "Talent", echangeOuvert: openedExchangeIds.has(c.id) };
     }));
     setConversations(candsAvecNom);
     const counts: Record<string, number> = {};
@@ -3299,10 +3597,16 @@ const MessagerieTab = ({ user, candidatureIdFromUrl }: any) => {
 
   const envoyerMessage = async () => {
     if (!nouveau.trim() || !convActive) return;
+    if (isCandidateExchangeClosed(convActive.statut)) {
+      toast.error("Cette candidature est clôturée. L’échange est disponible en lecture seule.");
+      return;
+    }
     const { error } = await supabase.from("messages").insert({ expedition_id: user.id, destinataire_id: convActive.talent_id, candidature_id: convActive.id, contenu: nouveau.trim() });
     if (!error) {
       setNouveau("");
+      setConvActive((current: any) => current ? { ...current, echangeOuvert: true } : current);
       chargerMessages(convActive.id);
+      chargerConversations();
       try {
         const { data: talentProfile } = await supabase
           .from("profiles")
@@ -3313,6 +3617,8 @@ const MessagerieTab = ({ user, candidatureIdFromUrl }: any) => {
       } catch (emailError) {
         console.error("Erreur email message:", emailError);
       }
+    } else {
+      toast.error(translateAppError(error.message, "Impossible d’envoyer ce message."));
     }
   };
 
@@ -3328,18 +3634,20 @@ const MessagerieTab = ({ user, candidatureIdFromUrl }: any) => {
         return titre.includes(needle) || talentNom.includes(needle) || statut.includes(needle);
       })
     : conversations;
+  const openExchangeCount = conversations.filter((conversation) => conversation.echangeOuvert).length;
+  const exchangeClosed = Boolean(convActive && isCandidateExchangeClosed(convActive.statut));
 
   return (
     <div>
-      <h2 className="text-2xl font-bold mb-2">Messagerie</h2>
-      <p className="text-muted-foreground mb-6">Retrouvez ici vos échanges avec chaque candidat, avec un suivi plus lisible sur mobile comme sur desktop.</p>
+      <h2 className="text-2xl font-bold mb-2">Échanges candidats</h2>
+      <p className="text-muted-foreground mb-6">Ouvrez un échange depuis une candidature, puis centralisez ici les réponses liées à ce recrutement.</p>
       <div className="mb-4 grid gap-3 sm:grid-cols-3">
         <div className="dashboard-stat-card p-4 border border-accent/20 bg-accent/10">
           <div className="flex items-start justify-between gap-3">
             <div>
-              <p className="text-xs font-semibold uppercase tracking-wide text-accent">Conversations</p>
-              <p className="mt-2 text-2xl font-bold">{conversations.length}</p>
-              <p className="mt-1 text-xs text-muted-foreground">Candidatures avec échanges actifs.</p>
+              <p className="text-xs font-semibold uppercase tracking-wide text-accent">Échanges ouverts</p>
+              <p className="mt-2 text-2xl font-bold">{openExchangeCount}</p>
+              <p className="mt-1 text-xs text-muted-foreground">Initiés par votre équipe.</p>
             </div>
             <div className="flex h-10 w-10 items-center justify-center rounded-2xl bg-accent/12 text-accent">
               <MessageSquare className="h-5 w-5" />
@@ -3349,7 +3657,7 @@ const MessagerieTab = ({ user, candidatureIdFromUrl }: any) => {
         <div className="dashboard-stat-card p-4 border border-blue-500/20 bg-blue-500/10">
           <div className="flex items-start justify-between gap-3">
             <div>
-              <p className="text-xs font-semibold uppercase tracking-wide text-blue-300">Messages non lus</p>
+              <p className="text-xs font-semibold uppercase tracking-wide text-blue-600 dark:text-blue-300">Réponses non lues</p>
               <p className="mt-2 text-2xl font-bold">{totalNonLus}</p>
               <p className="mt-1 text-xs text-muted-foreground">À consulter en priorité.</p>
             </div>
@@ -3362,8 +3670,8 @@ const MessagerieTab = ({ user, candidatureIdFromUrl }: any) => {
           <div className="flex items-start justify-between gap-3">
             <div>
               <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Vue active</p>
-              <p className="mt-2 text-sm font-semibold">{convActive ? convActive.talentNom : "Aucune conversation sélectionnée"}</p>
-              <p className="mt-1 text-xs text-muted-foreground">{convActive?.offre?.titre || "Choisissez un dossier pour afficher les messages."}</p>
+              <p className="mt-2 text-sm font-semibold">{convActive ? convActive.talentNom : "Aucune candidature sélectionnée"}</p>
+              <p className="mt-1 text-xs text-muted-foreground">{convActive?.offre?.titre || "Choisissez un dossier pour ouvrir ou consulter un échange."}</p>
             </div>
             <div className="flex h-10 w-10 items-center justify-center rounded-2xl bg-secondary/40 text-muted-foreground">
               <Users className="h-5 w-5" />
@@ -3374,7 +3682,7 @@ const MessagerieTab = ({ user, candidatureIdFromUrl }: any) => {
       <div className="grid gap-4 lg:h-[600px] lg:grid-cols-3 lg:gap-6">
         <div className={`dashboard-panel max-h-[360px] overflow-y-auto p-4 lg:max-h-none ${convActive ? "hidden lg:block" : ""}`}>
           <div className="mb-3 flex items-center justify-between gap-2">
-            <h3 className="font-semibold text-sm text-muted-foreground">Conversations</h3>
+            <h3 className="font-semibold text-sm text-muted-foreground">Candidatures reçues</h3>
             <span className="rounded-full border border-border/60 bg-secondary/30 px-2.5 py-1 text-xs text-muted-foreground">
               {conversationsFiltrees.length}
             </span>
@@ -3396,7 +3704,7 @@ const MessagerieTab = ({ user, candidatureIdFromUrl }: any) => {
                 <button key={c.id} onClick={() => setConvActive(c)} className={`w-full text-left p-4 rounded-2xl border transition-all ${convActive?.id === c.id ? "border-accent/25 bg-accent/12 shadow-[0_18px_42px_-30px_rgba(6,182,212,0.85)]" : "border-border/50 bg-secondary/25 hover:border-accent/20 hover:bg-secondary/60"}`}>
                   <div className="mb-1 flex items-start justify-between gap-3">
                     <div>
-                      <p className="text-sm font-medium">{c.offre?.titre || "Offre"}</p>
+                      <p className="text-sm font-medium">{formatDisplayLabel(c.offre?.titre) || "Offre"}</p>
                       <p className="mt-1 text-xs text-muted-foreground">{c.talentNom}</p>
                     </div>
                     {nonLusParConv[c.id] > 0 && (<span className="w-5 h-5 rounded-full bg-blue-500 text-white text-xs flex items-center justify-center font-bold">{nonLusParConv[c.id]}</span>)}
@@ -3405,11 +3713,9 @@ const MessagerieTab = ({ user, candidatureIdFromUrl }: any) => {
                     <span className="rounded-full border border-border/60 bg-background/60 px-2.5 py-1 text-[11px] text-muted-foreground">
                       {getDisplayCandidatureStatus(c.statut)}
                     </span>
-                    {c.offre?.titre && (
-                      <span className="rounded-full border border-accent/20 bg-accent/5 px-2.5 py-1 text-[11px] text-accent">
-                        Dossier candidat
-                      </span>
-                    )}
+                    <span className={`rounded-full border px-2.5 py-1 text-[11px] ${isCandidateExchangeClosed(c.statut) ? "border-border bg-secondary/40 text-muted-foreground" : c.echangeOuvert ? "border-emerald-500/20 bg-emerald-500/10 text-emerald-600 dark:text-emerald-300" : "border-accent/20 bg-accent/5 text-accent"}`}>
+                      {isCandidateExchangeClosed(c.statut) ? "Lecture seule" : c.echangeOuvert ? "Échange ouvert" : "À ouvrir"}
+                    </span>
                   </div>
                 </button>
               ))}
@@ -3428,13 +3734,13 @@ const MessagerieTab = ({ user, candidatureIdFromUrl }: any) => {
                       className="mb-2 inline-flex items-center gap-2 rounded-full border border-border/60 bg-secondary/20 px-3 py-1 text-xs font-semibold text-muted-foreground transition-colors hover:border-accent/25 hover:text-foreground lg:hidden"
                     >
                       <ArrowLeft className="h-3.5 w-3.5" />
-                      Retour aux conversations
+                      Retour aux candidatures
                     </button>
                     <h3 className="font-semibold">{convActive.offre?.titre}</h3>
                     <p className="mt-1 text-xs text-muted-foreground">{convActive.talentNom}</p>
                   </div>
-                  <span className="w-fit rounded-full border border-accent/20 bg-accent/10 px-3 py-1 text-xs font-medium text-accent">
-                    Conversation active
+                  <span className={`w-fit rounded-full border px-3 py-1 text-xs font-medium ${exchangeClosed ? "border-border bg-secondary/40 text-muted-foreground" : convActive.echangeOuvert ? "border-emerald-500/20 bg-emerald-500/10 text-emerald-600 dark:text-emerald-300" : "border-accent/20 bg-accent/10 text-accent"}`}>
+                    {exchangeClosed ? "Lecture seule" : convActive.echangeOuvert ? "Échange ouvert" : "À ouvrir par votre équipe"}
                   </span>
                 </div>
               </div>
@@ -3443,14 +3749,14 @@ const MessagerieTab = ({ user, candidatureIdFromUrl }: any) => {
                   <div className="flex h-full flex-col items-center justify-center text-center">
                     <MessageSquare className="mb-3 h-12 w-12 text-accent/20" />
                     <p className="text-sm font-medium">Aucun message pour le moment</p>
-                    <p className="mt-1 text-xs text-muted-foreground">Envoyez le premier message pour lancer l'échange avec ce talent.</p>
+                    <p className="mt-1 text-xs text-muted-foreground">Envoyez le premier message professionnel pour ouvrir l’échange avec ce talent.</p>
                   </div>
                 ) : (
                   messages.map((m) => (
                     <div key={m.id} className={`flex ${m.expedition_id === user.id ? "justify-end" : "justify-start"}`}>
                       <div className={`max-w-[85%] rounded-2xl px-4 py-3 text-sm sm:max-w-sm ${m.expedition_id === user.id ? "bg-accent text-white shadow-[0_18px_45px_-36px_rgba(6,182,212,0.65)]" : "bg-secondary/60 border border-border/50 text-foreground"}`}>
                         {m.automated && <p className="mb-1 text-[10px] font-semibold uppercase tracking-wide opacity-70">Message automatique</p>}
-                        {m.contenu}
+                        {formatStoredMessageText(m.contenu)}
                         <p className="text-xs opacity-60 mt-1">{new Date(m.created_at).toLocaleTimeString("fr-FR", { hour: "2-digit", minute: "2-digit" })}</p>
                       </div>
                     </div>
@@ -3458,16 +3764,24 @@ const MessagerieTab = ({ user, candidatureIdFromUrl }: any) => {
                 )}
               </div>
               <div className="border-t border-border/50 p-4">
-                <div className="rounded-2xl border border-border/60 bg-secondary/20 p-3">
-                  <div className="flex flex-col gap-2 sm:flex-row">
-                     <input value={nouveau} onChange={(e) => setNouveau(e.target.value)} onKeyDown={(e) => e.key === "Enter" && envoyerMessage()} className="flex-1 bg-secondary border border-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-accent/50" placeholder="Écrivez un message..." />
-                    <Button className="w-full sm:w-auto" variant="glow" size="sm" onClick={envoyerMessage}><Send className="w-4 h-4 sm:mr-1" /> <span className="sm:inline hidden">Envoyer</span></Button>
+                {exchangeClosed ? (
+                  <div className="flex items-start gap-3 rounded-xl border border-border/60 bg-secondary/25 p-3">
+                    <Lock className="mt-0.5 h-4 w-4 shrink-0 text-muted-foreground" />
+                    <div><p className="text-sm font-semibold">Échange clôturé</p><p className="mt-1 text-xs text-muted-foreground">La candidature a été refusée. L’historique reste disponible en lecture seule.</p></div>
                   </div>
-                </div>
+                ) : (
+                  <div className="rounded-2xl border border-border/60 bg-secondary/20 p-3">
+                    {!convActive.echangeOuvert && <p className="mb-2 text-xs text-muted-foreground">Ce premier message ouvrira l’échange et permettra au Talent de vous répondre.</p>}
+                    <div className="flex flex-col gap-2 sm:flex-row">
+                      <input value={nouveau} onChange={(e) => setNouveau(e.target.value)} onKeyDown={(e) => e.key === "Enter" && envoyerMessage()} className="flex-1 bg-secondary border border-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-accent/50" placeholder={convActive.echangeOuvert ? "Répondre au Talent..." : "Écrire le premier message..."} />
+                      <Button className="w-full sm:w-auto" variant="glow" size="sm" onClick={envoyerMessage}><Send className="w-4 h-4 sm:mr-1" /> <span className="sm:inline hidden">{convActive.echangeOuvert ? "Envoyer" : "Ouvrir l’échange"}</span></Button>
+                    </div>
+                  </div>
+                )}
               </div>
             </>
           ) : (
-            <div className="flex-1 flex items-center justify-center text-muted-foreground text-sm"><div className="text-center"><MessageSquare className="w-12 h-12 mx-auto mb-3 opacity-20" /><p>Sélectionnez une conversation</p></div></div>
+            <div className="flex-1 flex items-center justify-center text-muted-foreground text-sm"><div className="max-w-sm text-center"><MessageSquare className="w-12 h-12 mx-auto mb-3 opacity-20" /><p className="font-semibold text-foreground">Sélectionnez une candidature</p><p className="mt-1 text-xs leading-5">Vous pourrez consulter l’historique ou envoyer le premier message pour ouvrir un échange.</p></div></div>
           )}
         </div>
       </div>
@@ -3483,8 +3797,14 @@ const DocumentsEntrepriseTab = () => {
   const [uploading, setUploading] = useState<string | null>(null);
   const [requestSelections, setRequestSelections] = useState<Record<string, string>>({});
   const [requestingFolder, setRequestingFolder] = useState<string | null>(null);
+  const [deletingRequest, setDeletingRequest] = useState<string | null>(null);
   const [documentsRequestsReady, setDocumentsRequestsReady] = useState(true);
   const [expandedFolderId, setExpandedFolderId] = useState<string | null>(null);
+  const [hasAutoExpandedFolder, setHasAutoExpandedFolder] = useState(false);
+  const [documentsView, setDocumentsView] = useState<"all" | "requests" | "shared">("all");
+  const [showRequestComposer, setShowRequestComposer] = useState(false);
+  const [showShareComposer, setShowShareComposer] = useState(false);
+  const [shareCategory, setShareCategory] = useState("shared-contrat");
   const internalCategories = [
     { id: "rh", label: "Documents RH", icon: FileText, desc: "Documents internes à votre entreprise uniquement" },
   ];
@@ -3502,12 +3822,24 @@ const DocumentsEntrepriseTab = () => {
   useEffect(() => {
     if (sharedFolders.length === 0) {
       setExpandedFolderId(null);
+      setHasAutoExpandedFolder(false);
       return;
     }
     if (expandedFolderId && sharedFolders.some((folder) => folder.id === expandedFolderId)) return;
+    if (expandedFolderId) {
+      setExpandedFolderId(null);
+      return;
+    }
+    if (hasAutoExpandedFolder) return;
     const withPendingRequest = sharedFolders.find((folder) => (folder.documentRequests || []).some((request: any) => request.status === "requested"));
     setExpandedFolderId(withPendingRequest?.id || sharedFolders[0].id);
-  }, [sharedFolders, expandedFolderId]);
+    setHasAutoExpandedFolder(true);
+  }, [sharedFolders, expandedFolderId, hasAutoExpandedFolder]);
+  useEffect(() => {
+    setDocumentsView("all");
+    setShowRequestComposer(false);
+    setShowShareComposer(false);
+  }, [expandedFolderId]);
   const chargerDocuments = async () => {
     if (!user) return;
     const result: Record<string, any[]> = {};
@@ -3589,28 +3921,38 @@ const DocumentsEntrepriseTab = () => {
   };
   const uploadDocument = async (e: React.ChangeEvent<HTMLInputElement>, categorie: string) => {
     const file = e.target.files?.[0]; if (!file || !user) return;
+    const validationError = validateDocumentFile(file);
+    if (validationError) {
+      toast.error(validationError);
+      e.target.value = "";
+      return;
+    }
     setUploading(categorie);
     try {
-      const nomPropre = file.name.replace(/[^a-zA-Z0-9._-]/g, "_");
+      const nomPropre = sanitizeStorageFileName(file.name);
       const path = `${user.id}/${categorie}/${Date.now()}_${nomPropre}`;
-      const { error } = await supabase.storage.from("documents").upload(path, file);
-      if (error) throw error;
+      await uploadPrivateDocument(path, file, { fileName: file.name, metadata: { categorie } });
       toast.success("Document ajouté !"); chargerDocuments();
-    } catch (err: any) { toast.error(err.message); } finally { setUploading(null); e.target.value = ""; }
+    } catch (err: any) { toast.error(translateAppError(err?.message, "Impossible d'ajouter ce document.")); } finally { setUploading(null); e.target.value = ""; }
   };
   const uploadSharedDocument = async (e: React.ChangeEvent<HTMLInputElement>, categorie: string, candidatureId: string) => {
     const file = e.target.files?.[0]; if (!file || !user) return;
+    const validationError = validateDocumentFile(file);
+    if (validationError) {
+      toast.error(validationError);
+      e.target.value = "";
+      return;
+    }
     const uploadKey = `${categorie}-${candidatureId}`;
     setUploading(uploadKey);
     try {
-      const nomPropre = file.name.replace(/[^a-zA-Z0-9._-]/g, "_");
+      const nomPropre = sanitizeStorageFileName(file.name);
       const path = `${user.id}/${categorie}/${candidatureId}/${Date.now()}_${nomPropre}`;
-      const { error } = await supabase.storage.from("documents").upload(path, file);
-      if (error) throw error;
+      await uploadPrivateDocument(path, file, { fileName: file.name, metadata: { categorie, candidatureId } });
       toast.success("Document partagé ajouté !");
       chargerDocuments();
     } catch (err: any) {
-      toast.error(err.message);
+      toast.error(translateAppError(err?.message, "Impossible d'ajouter ce document partagé."));
     } finally {
       setUploading(null);
       e.target.value = "";
@@ -3619,19 +3961,29 @@ const DocumentsEntrepriseTab = () => {
   const telechargerDocument = async (ownerId: string, categorie: string, nom: string, candidatureId?: string) => {
     if (!ownerId) return;
     const basePath = candidatureId ? `${ownerId}/${categorie}/${candidatureId}/${nom}` : `${ownerId}/${categorie}/${nom}`;
-    const { data } = await supabase.storage.from("documents").createSignedUrl(basePath, 60);
-    if (data?.signedUrl) window.open(data.signedUrl, "_blank");
+    try {
+      await openPrivateDocument(basePath, { fileName: nom, metadata: { categorie, candidatureId: candidatureId || null } });
+    } catch (err: any) {
+      toast.error(translateAppError(err?.message, "Impossible d'ouvrir ce document."));
+    }
   };
   const ouvrirCheminStockage = async (storagePath: string | null | undefined) => {
     if (!storagePath) return;
-    const { data } = await supabase.storage.from("documents").createSignedUrl(storagePath, 60);
-    if (data?.signedUrl) window.open(data.signedUrl, "_blank");
+    try {
+      await openPrivateDocument(storagePath);
+    } catch (err: any) {
+      toast.error(translateAppError(err?.message, "Impossible d'ouvrir ce document."));
+    }
   };
   const supprimerDocument = async (categorie: string, nom: string, candidatureId?: string) => {
     if (!user) return;
     const basePath = candidatureId ? `${user.id}/${categorie}/${candidatureId}/${nom}` : `${user.id}/${categorie}/${nom}`;
-    const { error } = await supabase.storage.from("documents").remove([basePath]);
-    if (!error) { toast.success("Document supprimé."); chargerDocuments(); } else toast.error("Erreur lors de la suppression.");
+    try {
+      await deletePrivateDocument(basePath, { fileName: nom, metadata: { categorie, candidatureId: candidatureId || null } });
+      toast.success("Document supprimé."); chargerDocuments();
+    } catch {
+      toast.error("Erreur lors de la suppression.");
+    }
   };
   const demanderDocument = async (folder: any) => {
     if (!user) return;
@@ -3641,22 +3993,51 @@ const DocumentsEntrepriseTab = () => {
 
     setRequestingFolder(folder.id);
     try {
-      const { error } = await supabase.from("document_requests").insert({
+      const { data: createdRequest, error } = await supabase.from("document_requests").insert({
         candidature_id: folder.id,
         entreprise_id: user.id,
         talent_id: folder.talent_id,
         requested_by: user.id,
         document_key: selectedDocument.key,
         document_label: selectedDocument.label,
-      });
+      }).select("id").single();
       if (error) throw error;
+      if (createdRequest?.id) {
+        void logDocumentAccess("request_created", null, {
+          documentRequestId: createdRequest.id,
+          metadata: { candidatureId: folder.id, documentKey: selectedDocument.key },
+        });
+      }
       toast.success("Document demandé au candidat !");
       setRequestSelections((prev) => ({ ...prev, [folder.id]: "" }));
       await chargerDocuments();
     } catch (err: any) {
-      toast.error(err.message);
+      toast.error(translateAppError(err?.message, "Impossible de demander ce document."));
     } finally {
       setRequestingFolder(null);
+    }
+  };
+  const supprimerDemandeDocument = async (request: any) => {
+    if (!user) return;
+    setDeletingRequest(request.id);
+    try {
+      await logDocumentAccess("request_deleted", request.storage_path || null, {
+        fileName: request.file_name || request.document_label,
+        documentRequestId: request.id,
+        metadata: { candidatureId: request.candidature_id, documentKey: request.document_key },
+      });
+      const { error } = await supabase
+        .from("document_requests")
+        .delete()
+        .eq("id", request.id)
+        .eq("entreprise_id", user.id);
+      if (error) throw error;
+      toast.success("Demande de document supprimée.");
+      await chargerDocuments();
+    } catch (err: any) {
+      toast.error(translateAppError(err?.message, "Impossible de supprimer cette demande."));
+    } finally {
+      setDeletingRequest(null);
     }
   };
 
@@ -3669,6 +4050,10 @@ const DocumentsEntrepriseTab = () => {
       folder.offre?.titre,
       folder.statut,
       ...(folder.documentRequests || []).map((request: any) => request.document_label),
+      ...(folder.categories || []).flatMap((category: any) => [
+        ...(category.ownDocs || []).map((document: any) => document.name),
+        ...(category.partnerDocs || []).map((document: any) => document.name),
+      ]),
     ]
       .filter(Boolean)
       .some((value) => String(value).toLowerCase().includes(query));
@@ -3677,437 +4062,303 @@ const DocumentsEntrepriseTab = () => {
   const totalPendingRequests = sharedFolders.reduce((sum, folder) => sum + ((folder.documentRequests || []).filter((request: any) => request.status === "requested").length), 0);
   const totalReceivedRequests = sharedFolders.reduce((sum, folder) => sum + ((folder.documentRequests || []).filter((request: any) => request.status === "uploaded").length), 0);
   const totalSharedFolders = sharedFolders.length;
+  const selectedFolder = filteredSharedFolders.find((folder) => folder.id === expandedFolderId) || filteredSharedFolders[0] || null;
+  const compactDocumentRows = selectedFolder ? [
+    ...(selectedFolder.documentRequests || []).map((request: any) => ({
+      id: `request-${request.id}`,
+      name: request.file_name || request.document_label,
+      category: "Pièce demandée",
+      sharedBy: request.status === "uploaded" ? "Talent" : "Entreprise",
+      status: request.status === "uploaded" ? "Reçu" : "En attente",
+      statusClass: request.status === "uploaded"
+        ? "border-emerald-500/25 bg-emerald-500/10 text-emerald-400"
+        : "border-amber-500/25 bg-amber-500/10 text-amber-300",
+      kind: request.status === "uploaded" ? "received-request" : "pending-request",
+      request,
+    })),
+    ...(selectedFolder.categories || []).flatMap((category: any) => [
+      ...(category.ownDocs || []).map((document: any) => ({
+        id: `${category.id}-entreprise-${document.name}`,
+        name: document.name.replace(/^\d+_/, ""),
+        category: category.label,
+        categoryId: category.id,
+        sharedBy: "Entreprise",
+        status: "Partagé",
+        statusClass: "border-sky-500/25 bg-sky-500/10 text-sky-400",
+        kind: "company-document",
+        document,
+      })),
+      ...(category.partnerDocs || []).map((document: any) => ({
+        id: `${category.id}-talent-${document.name}`,
+        name: document.name.replace(/^\d+_/, ""),
+        category: category.label,
+        categoryId: category.id,
+        sharedBy: "Talent",
+        status: "Reçu",
+        statusClass: "border-emerald-500/25 bg-emerald-500/10 text-emerald-400",
+        kind: "talent-document",
+        document,
+      })),
+    ]),
+  ] : [];
+  const visibleCompactRows = compactDocumentRows.filter((row: any) => {
+    if (documentsView === "requests") return row.kind === "pending-request" || row.kind === "received-request";
+    if (documentsView === "shared") return row.kind === "company-document" || row.kind === "talent-document";
+    return true;
+  });
 
   return (
-    <div>
-      <div className="space-y-6">
-        <div className="dashboard-panel p-6 sm:p-7">
-          <div className="grid gap-6 lg:grid-cols-[1.15fr_0.85fr] lg:items-center">
+    <div className="space-y-4">
+      <section className="dashboard-panel p-4 sm:p-5">
+        <div className="flex flex-col gap-4 xl:flex-row xl:items-center xl:justify-between">
+          <div>
+            <p className="text-xs font-semibold uppercase tracking-[0.22em] text-accent">Espace sécurisé</p>
+            <h2 className="mt-1 text-2xl font-bold">Documents</h2>
+            <p className="mt-1 text-sm text-muted-foreground">Gérez les pièces internes et les échanges avec vos talents.</p>
+          </div>
+          <div className="flex w-full flex-col gap-2 sm:flex-row xl:w-auto">
+            <div className="relative min-w-0 sm:min-w-[300px]">
+              <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+              <input
+                value={searchDocuments}
+                onChange={(event) => setSearchDocuments(event.target.value)}
+                className="h-10 w-full rounded-xl border border-border bg-background/70 px-4 pl-10 text-sm outline-none focus:border-accent/50"
+                placeholder="Rechercher un talent ou un document..."
+              />
+            </div>
+            <input type="file" id="upload-ent-rh-compact" className="hidden" accept={DOCUMENT_ACCEPT_ATTRIBUTE} onChange={(event) => uploadDocument(event, "rh")} />
+            <Button variant="glow" className="whitespace-nowrap" disabled={uploading === "rh"} onClick={() => document.getElementById("upload-ent-rh-compact")?.click()}>
+              <Plus className="mr-1.5 h-4 w-4" />
+              {uploading === "rh" ? "Ajout..." : "Ajouter un document"}
+            </Button>
+          </div>
+        </div>
+      </section>
+
+      <div className="flex flex-wrap gap-2">
+        <span className="inline-flex items-center gap-2 rounded-xl border border-primary/20 bg-primary/10 px-3.5 py-2 text-sm font-medium">
+          <Users className="h-4 w-4 text-primary" /> {totalSharedFolders} dossier{totalSharedFolders > 1 ? "s" : ""} actif{totalSharedFolders > 1 ? "s" : ""}
+        </span>
+        <span className="inline-flex items-center gap-2 rounded-xl border border-amber-500/20 bg-amber-500/10 px-3.5 py-2 text-sm font-medium">
+          <Calendar className="h-4 w-4 text-amber-300" /> {totalPendingRequests} en attente
+        </span>
+        <span className="inline-flex items-center gap-2 rounded-xl border border-emerald-500/20 bg-emerald-500/10 px-3.5 py-2 text-sm font-medium">
+          <CheckCircle className="h-4 w-4 text-emerald-400" /> {totalReceivedRequests} reçu{totalReceivedRequests > 1 ? "s" : ""}
+        </span>
+      </div>
+
+      <div className="grid min-h-[620px] gap-4 xl:grid-cols-[310px_minmax(0,1fr)]">
+        <aside className="dashboard-panel flex flex-col p-3 sm:p-4">
+          <div className="flex items-center justify-between border-b border-border/60 px-1 pb-3">
             <div>
-              <div className="mb-3 inline-flex items-center gap-2 rounded-full border border-accent/20 bg-accent/10 px-3 py-1 text-[11px] font-semibold uppercase tracking-[0.24em] text-accent">
-                <FileText className="h-3.5 w-3.5" />
-                Documents et dossiers candidats
+              <h3 className="font-semibold">Dossiers talents</h3>
+              <p className="mt-0.5 text-xs text-muted-foreground">Candidatures acceptées</p>
+            </div>
+            <span className="rounded-full border border-border/70 bg-secondary/30 px-2.5 py-1 text-xs text-muted-foreground">{filteredSharedFolders.length}</span>
+          </div>
+
+          <div className="mt-3 space-y-2">
+            {filteredSharedFolders.length === 0 ? (
+              <div className="rounded-xl border border-dashed border-border p-4 text-center text-xs text-muted-foreground">
+                {sharedFolders.length === 0 ? "Aucun dossier actif pour le moment." : "Aucun dossier ne correspond à la recherche."}
               </div>
-              <h2 className="text-2xl font-bold sm:text-3xl">Documents</h2>
-              <p className="mt-2 max-w-2xl text-sm leading-6 text-muted-foreground sm:text-base">
-                Séparez vos documents internes des dossiers partagés avec chaque talent pour garder
-                une lecture claire, professionnelle et exploitable rapidement.
-              </p>
-            </div>
-            <div className="dashboard-subcard p-5">
-              <p className="text-xs font-semibold uppercase tracking-[0.24em] text-accent">Vue rapide</p>
-              <p className="mt-3 text-lg font-semibold text-foreground">
-                {totalPendingRequests > 0
-                  ? `${totalPendingRequests} pièce${totalPendingRequests > 1 ? "s" : ""} encore attendue${totalPendingRequests > 1 ? "s" : ""}`
-                  : "Aucune pièce urgente en attente"}
-              </p>
-              <p className="mt-2 text-sm leading-6 text-muted-foreground">
-                Les documents RH restent internes, tandis que les contrats, paies et documents d'intérim
-                restent rattachés à la bonne relation entreprise-talent.
-              </p>
-            </div>
-          </div>
-        </div>
-
-        <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
-          <div className="dashboard-stat-card border border-accent/20 bg-accent/10 p-4">
-            <p className="text-xs font-semibold uppercase tracking-wide text-accent">Docs internes</p>
-            <p className="mt-2 text-2xl font-bold">{totalInternalDocuments}</p>
-            <p className="mt-1 text-xs text-muted-foreground">Fichiers gardés dans votre espace entreprise.</p>
-          </div>
-          <div className="dashboard-stat-card border border-amber-500/20 bg-amber-500/10 p-4">
-            <p className="text-xs font-semibold uppercase tracking-wide text-amber-300">Demandes en attente</p>
-            <p className="mt-2 text-2xl font-bold">{totalPendingRequests}</p>
-            <p className="mt-1 text-xs text-muted-foreground">Pièces encore attendues de vos talents.</p>
-          </div>
-          <div className="dashboard-stat-card border border-emerald-500/20 bg-emerald-500/10 p-4">
-            <p className="text-xs font-semibold uppercase tracking-wide text-emerald-300">Pièces reçues</p>
-            <p className="mt-2 text-2xl font-bold">{totalReceivedRequests}</p>
-            <p className="mt-1 text-xs text-muted-foreground">Documents déjà récupérés sur les dossiers actifs.</p>
-          </div>
-          <div className="dashboard-stat-card border border-primary/20 bg-primary/10 p-4">
-            <p className="text-xs font-semibold uppercase tracking-wide text-primary">Dossiers actifs</p>
-            <p className="mt-2 text-2xl font-bold">{totalSharedFolders}</p>
-            <p className="mt-1 text-xs text-muted-foreground">Relations entreprise-talent ouvertes avec partage.</p>
-          </div>
-        </div>
-
-        <div className="dashboard-panel p-4 sm:p-5">
-          <div className="grid gap-4 xl:grid-cols-[0.8fr_0.8fr_1.1fr]">
-            <div className="dashboard-subcard p-4">
-              <p className="text-sm font-semibold text-foreground">Documents internes entreprise</p>
-              <p className="mt-2 text-sm leading-6 text-muted-foreground">
-                Ces documents restent dans votre espace entreprise. Ils ne sont jamais visibles par les talents.
-              </p>
-              <div className="mt-4 rounded-xl border border-border/60 bg-background/50 px-3 py-2 text-xs text-muted-foreground">
-                Idéal pour vos documents RH, modèles ou pièces de suivi interne.
-              </div>
-            </div>
-
-            <div className="dashboard-subcard p-4">
-              <p className="text-sm font-semibold text-foreground">Pilotage des demandes</p>
-              <p className="mt-2 text-sm leading-6 text-muted-foreground">
-                Suivez en un coup d'œil les pièces administratives encore attendues et celles déjà reçues.
-              </p>
-              <div className="mt-4 flex flex-wrap gap-2">
-                <span className="rounded-full border border-amber-500/20 bg-amber-500/10 px-3 py-1 text-xs font-semibold text-amber-300">
-                  {totalPendingRequests} en attente
-                </span>
-                <span className="rounded-full border border-emerald-500/20 bg-emerald-500/10 px-3 py-1 text-xs font-semibold text-emerald-300">
-                  {totalReceivedRequests} reçue{totalReceivedRequests > 1 ? "s" : ""}
-                </span>
-              </div>
-            </div>
-
-            <div className="dashboard-subcard p-4">
-              <p className="text-sm font-semibold text-foreground">Rechercher un dossier talent</p>
-              <div className="relative mt-3">
-                <input
-                  value={searchDocuments}
-                  onChange={(e) => setSearchDocuments(e.target.value)}
-                  className="w-full rounded-xl border border-border bg-background/70 px-4 py-3 pl-10 text-sm focus:outline-none focus:border-accent/40"
-                  placeholder="Nom, poste, offre ou document demandé..."
-                />
-                <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
-                {searchDocuments && (
-                  <button
-                    onClick={() => setSearchDocuments("")}
-                    className="absolute right-3 top-1/2 -translate-y-1/2 text-xs text-muted-foreground hover:text-foreground"
-                  >
-                    Effacer
-                  </button>
-                )}
-              </div>
-            </div>
-          </div>
-        </div>
-
-        <div className="grid grid-cols-1 gap-6">
-        {internalCategories.map(({ id, label, icon: Icon, desc }) => {
-          const docs = documents[id] || [];
-          return (
-            <div key={id} className="dashboard-panel p-5 sm:p-6">
-              <div className="mb-4 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-                <div className="flex items-center gap-3">
-                  <div className="w-10 h-10 rounded-xl bg-accent/10 flex items-center justify-center"><Icon className="w-5 h-5 text-accent" /></div>
-                  <div>
-                    <div className="flex flex-wrap items-center gap-2">
-                      <h3 className="font-semibold">{label}</h3>
-                      <span className="rounded-full border border-border/60 bg-secondary/30 px-2.5 py-1 text-[11px] text-muted-foreground">{docs.length}</span>
-                    </div>
-                    <p className="text-xs text-muted-foreground">{desc}</p>
+            ) : filteredSharedFolders.map((folder) => {
+              const isSelected = selectedFolder?.id === folder.id;
+              const pendingCount = (folder.documentRequests || []).filter((request: any) => request.status === "requested").length;
+              return (
+                <button
+                  key={folder.id}
+                  type="button"
+                  onClick={() => setExpandedFolderId(folder.id)}
+                  className={`w-full rounded-2xl border p-3 text-left transition-colors ${isSelected ? "border-primary/50 bg-primary/10" : "border-border/60 bg-background/35 hover:border-primary/25"}`}
+                >
+                  <div className="flex items-start gap-3">
+                    <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-primary/15 text-sm font-bold text-primary">
+                      {String(folder.talentNom || "T").split(/\s+/).map((part: string) => part[0]).join("").slice(0, 2).toUpperCase()}
+                    </span>
+                    <span className="min-w-0 flex-1">
+                      <span className="block truncate text-sm font-semibold">{folder.talentNom}</span>
+                      <span className="mt-0.5 block truncate text-xs text-muted-foreground">{folder.offre?.titre || folder.talentPoste || "Candidature"}</span>
+                      <span className="mt-2 flex flex-wrap gap-1.5">
+                        <span className="rounded-full border border-emerald-500/20 bg-emerald-500/10 px-2 py-0.5 text-[10px] font-semibold text-emerald-400">Acceptée</span>
+                        {pendingCount > 0 && <span className="rounded-full border border-amber-500/20 bg-amber-500/10 px-2 py-0.5 text-[10px] font-semibold text-amber-300">{pendingCount} en attente</span>}
+                      </span>
+                    </span>
                   </div>
-                </div>
-                <div>
-                  <input type="file" id={`upload-ent-${id}`} className="hidden" accept=".pdf,.doc,.docx,.png,.jpg" onChange={(e) => uploadDocument(e, id)} />
-                  <Button className="w-full sm:w-auto" variant="ghost-glow" size="sm" disabled={uploading === id} onClick={() => document.getElementById(`upload-ent-${id}`)?.click()}><Plus className="w-3 h-3 mr-1" />{uploading === id ? "Ajout..." : "Ajouter"}</Button>
-                </div>
+                </button>
+              );
+            })}
+          </div>
+
+          <div className="mt-auto border-t border-border/60 pt-4">
+            <div className="flex items-center justify-between gap-2">
+              <div>
+                <p className="text-sm font-semibold">Documents internes</p>
+                <p className="text-xs text-muted-foreground">Visibles uniquement par votre entreprise</p>
               </div>
-              {docs.length > 0 ? (
-                <div className="space-y-2">
-                  {docs.map((doc) => (
-                    <div key={doc.name} className="dashboard-subcard flex flex-col gap-3 px-3 py-3 sm:flex-row sm:items-center sm:justify-between">
-                      <span className="text-sm break-all sm:flex-1 sm:truncate">{doc.name.replace(/^\d+_/, "")}</span>
-                      <div className="flex gap-2 self-start sm:ml-2 sm:self-auto">
-                        <Button variant="ghost-glow" size="sm" onClick={() => telechargerDocument(user.id, id, doc.name)}>Télécharger</Button>
-                        <ConfirmActionDialog
-                          title="Supprimer ce document ?"
-                          description="Le fichier sera retiré de votre espace entreprise. Si vous changez d'avis, vous pouvez encore annuler maintenant."
-                          onConfirm={() => supprimerDocument(id, doc.name)}
-                        >
-                          <button className="text-red-400 hover:text-red-300 transition-colors p-1"><Trash2 className="w-4 h-4" /></button>
-                        </ConfirmActionDialog>
-                      </div>
-                    </div>
+              <span className="rounded-full bg-secondary/50 px-2 py-1 text-xs text-muted-foreground">{totalInternalDocuments}</span>
+            </div>
+            <div className="mt-3 max-h-36 space-y-2 overflow-y-auto">
+              {(documents.rh || []).length === 0 ? (
+                <p className="rounded-xl border border-dashed border-border px-3 py-3 text-xs text-muted-foreground">Aucun document interne.</p>
+              ) : (documents.rh || []).map((documentItem: any) => (
+                <div key={documentItem.name} className="flex items-center gap-2 rounded-xl border border-border/60 bg-background/40 px-2.5 py-2">
+                  <FileText className="h-4 w-4 shrink-0 text-accent" />
+                  <button type="button" onClick={() => telechargerDocument(user.id, "rh", documentItem.name)} className="min-w-0 flex-1 truncate text-left text-xs hover:text-accent">
+                    {documentItem.name.replace(/^\d+_/, "")}
+                  </button>
+                  <ConfirmActionDialog title="Supprimer ce document ?" description="Ce fichier interne sera supprimé de votre espace entreprise." onConfirm={() => supprimerDocument("rh", documentItem.name)}>
+                    <button type="button" aria-label="Supprimer le document interne" className="p-1 text-red-400 hover:text-red-300"><Trash2 className="h-3.5 w-3.5" /></button>
+                  </ConfirmActionDialog>
+                </div>
+              ))}
+            </div>
+          </div>
+        </aside>
+
+        <section className="dashboard-panel flex min-w-0 flex-col p-4 sm:p-5">
+          {!selectedFolder ? (
+            <div className="flex flex-1 items-center justify-center py-16 text-center">
+              <div>
+                <Users className="mx-auto h-12 w-12 text-primary/25" />
+                <h3 className="mt-4 font-semibold">Aucun dossier talent à afficher</h3>
+                <p className="mt-1 text-sm text-muted-foreground">Un dossier apparaîtra ici lorsqu’une candidature sera acceptée.</p>
+              </div>
+            </div>
+          ) : (
+            <>
+              <div className="flex flex-col gap-3 border-b border-border/60 pb-4 sm:flex-row sm:items-start sm:justify-between">
+                <div>
+                  <div className="flex flex-wrap items-center gap-2">
+                    <h3 className="text-xl font-bold">{selectedFolder.talentNom}</h3>
+                    <span className="text-muted-foreground">· {selectedFolder.offre?.titre || selectedFolder.talentPoste || "Candidature"}</span>
+                  </div>
+                  <p className="mt-1 text-xs text-muted-foreground">Dossier sécurisé lié à cette candidature.</p>
+                </div>
+                <span className="w-fit rounded-full border border-emerald-500/20 bg-emerald-500/10 px-3 py-1 text-xs font-semibold text-emerald-400">Candidature acceptée</span>
+              </div>
+
+              <div className="mt-4 flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
+                <div className="flex overflow-x-auto border-b border-border/60">
+                  {([
+                    ["all", "Tous les documents", compactDocumentRows.length],
+                    ["requests", "Demandes", compactDocumentRows.filter((row: any) => row.kind.includes("request")).length],
+                    ["shared", "Partagés", compactDocumentRows.filter((row: any) => row.kind.includes("document")).length],
+                  ] as const).map(([id, label, count]) => (
+                    <button key={id} type="button" onClick={() => setDocumentsView(id)} className={`whitespace-nowrap border-b-2 px-3 py-2 text-sm font-semibold transition-colors ${documentsView === id ? "border-primary text-primary" : "border-transparent text-muted-foreground hover:text-foreground"}`}>
+                      {label} <span className="ml-1 text-xs opacity-70">{count}</span>
+                    </button>
                   ))}
                 </div>
-              ) : (<p className="text-xs text-muted-foreground text-center py-2">Aucun document, cliquez sur « Ajouter ».</p>)}
-            </div>
-          );
-        })}
-        </div>
-
-        <div className="dashboard-panel p-5 sm:p-6">
-          <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
-            <div>
-              <p className="text-sm font-semibold">Dossiers partagés avec les talents</p>
-              <p className="mt-1 text-sm leading-6 text-muted-foreground">
-                Les dossiers partagés apparaissent uniquement pour les candidatures acceptées. Les contrats, fiches de paie et documents d'intérim restent liés à la bonne relation entreprise-talent.
-              </p>
-            </div>
-            <span className="rounded-full border border-primary/20 bg-primary/10 px-3 py-1 text-xs font-semibold text-primary">
-              {totalSharedFolders} dossier{totalSharedFolders > 1 ? "s" : ""} actif{totalSharedFolders > 1 ? "s" : ""}
-            </span>
-          </div>
-          {!documentsRequestsReady && (
-            <p className="mt-3 rounded-xl border border-amber-500/20 bg-amber-500/10 px-3 py-2 text-xs text-amber-300">
-              Les demandes de documents ne sont pas encore actives dans la base. Exécutez le SQL ajouté pour que les demandes apparaissent côté talent.
-            </p>
-          )}
-        </div>
-
-        {sharedFolders.length === 0 ? (
-          <div className="dashboard-empty-card p-8">
-            <Users className="w-12 h-12 text-accent/20 mx-auto mb-3" />
-            <p className="font-semibold mb-1">Aucun dossier partagé actif pour le moment</p>
-            <p className="text-sm text-muted-foreground">Les dossiers apparaîtront ici dès qu'une candidature sera acceptée.</p>
-          </div>
-        ) : filteredSharedFolders.length === 0 ? (
-          <div className="dashboard-empty-card p-8">
-            <Search className="w-12 h-12 text-accent/20 mx-auto mb-3" />
-            <p className="font-semibold mb-1">Aucun candidat trouvé</p>
-            <p className="text-sm text-muted-foreground">Essayez un nom, un prénom, un poste ou le titre de l'offre.</p>
-          </div>
-        ) : (
-          <div className="space-y-4">
-            {filteredSharedFolders.map((folder) => {
-              const isExpanded = expandedFolderId === folder.id;
-              const pendingRequests = (folder.documentRequests || []).filter((request: any) => request.status === "requested");
-              const receivedRequests = (folder.documentRequests || []).filter((request: any) => request.status === "uploaded");
-              const sentDocumentsCount = (folder.categories || []).reduce((sum: number, category: any) => sum + (category.ownDocs?.length || 0), 0);
-              const receivedDocumentsCount = (folder.categories || []).reduce((sum: number, category: any) => sum + (category.partnerDocs?.length || 0), 0);
-
-              return (
-              <div key={folder.id} className="dashboard-panel p-6">
-                <div className="mb-5 flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
-                  <div>
-                    <div className="flex flex-wrap items-center gap-2">
-                      <h3 className="text-lg font-bold">{folder.talentNom}</h3>
-                      <span className="rounded-full border border-primary/20 bg-primary/10 px-2.5 py-1 text-[11px] font-semibold text-primary">
-                        {folder.offre?.titre || "Candidature"}
-                      </span>
-                    </div>
-                    <p className="text-sm text-muted-foreground">Dossier partagé actif pour cette relation entreprise-talent.</p>
-                    {folder.talentPoste && <p className="text-xs text-muted-foreground mt-1">{folder.talentPoste}</p>}
-                  </div>
-                  <span className="w-fit rounded-full border border-green-500/20 bg-green-500/10 px-3 py-1 text-xs font-medium text-green-400">
-                    Candidature acceptée
-                  </span>
-                </div>
-
-                <div className="mb-4 grid gap-3 xl:grid-cols-4">
-                  <div className="rounded-2xl border border-amber-500/20 bg-amber-500/10 p-4">
-                    <p className="text-xs font-semibold uppercase tracking-wide text-amber-300">Demandes en attente</p>
-                    <p className="mt-2 text-2xl font-bold">{pendingRequests.length}</p>
-                    <p className="mt-1 text-xs text-muted-foreground">Pièces encore attendues du candidat</p>
-                  </div>
-                  <div className="rounded-2xl border border-emerald-500/20 bg-emerald-500/10 p-4">
-                    <p className="text-xs font-semibold uppercase tracking-wide text-emerald-300">Pièces reçues</p>
-                    <p className="mt-2 text-2xl font-bold">{receivedRequests.length}</p>
-                    <p className="mt-1 text-xs text-muted-foreground">Demandes déjà complétées</p>
-                  </div>
-                  <div className="rounded-2xl border border-accent/20 bg-accent/10 p-4">
-                    <p className="text-xs font-semibold uppercase tracking-wide text-accent">Envoyés par l'entreprise</p>
-                    <p className="mt-2 text-2xl font-bold">{sentDocumentsCount}</p>
-                    <p className="mt-1 text-xs text-muted-foreground">Contrats, paie et intérim déjà transmis</p>
-                  </div>
-                  <div className="rounded-2xl border border-primary/20 bg-primary/10 p-4">
-                    <p className="text-xs font-semibold uppercase tracking-wide text-primary">Reçus du talent</p>
-                    <p className="mt-2 text-2xl font-bold">{receivedDocumentsCount}</p>
-                    <p className="mt-1 text-xs text-muted-foreground">Documents partagés par le candidat</p>
-                  </div>
-                </div>
-
-                <div className="mb-4 flex flex-col gap-3 rounded-2xl border border-border/60 bg-secondary/20 px-4 py-3 sm:flex-row sm:items-center sm:justify-between">
-                  <div>
-                    <p className="text-sm font-semibold">Vue détaillée du dossier</p>
-                    <p className="text-xs text-muted-foreground mt-1">Ouvrez ce dossier pour demander des pièces et consulter les documents partagés avec ce talent.</p>
-                  </div>
-                  <Button variant="ghost-glow" size="sm" className="w-full sm:w-auto" onClick={() => setExpandedFolderId(isExpanded ? null : folder.id)}>
-                    {isExpanded ? <ChevronDown className="w-4 h-4 mr-1 rotate-180" /> : <ChevronDown className="w-4 h-4 mr-1" />}
-                    {isExpanded ? "Fermer le dossier" : "Ouvrir le dossier"}
+                <div className="flex flex-col gap-2 sm:flex-row">
+                  <Button variant="ghost-glow" size="sm" onClick={() => { setShowRequestComposer((current) => !current); setShowShareComposer(false); }}>
+                    <FileText className="mr-1.5 h-4 w-4" /> Demander une pièce
+                  </Button>
+                  <Button variant="glow" size="sm" onClick={() => { setShowShareComposer((current) => !current); setShowRequestComposer(false); }}>
+                    <Plus className="mr-1.5 h-4 w-4" /> Partager un document
                   </Button>
                 </div>
-
-                {isExpanded && (
-                  <>
-                <div className="mb-4 rounded-2xl border border-amber-500/20 bg-amber-500/10 p-5">
-                  <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
-                    <div>
-                      <p className="font-semibold">1. Pièces administratives à demander</p>
-                      <p className="mt-1 text-sm text-muted-foreground">Ajoutez ici les pièces dont vous avez besoin. Le talent ne peut répondre qu'aux demandes créées dans ce bloc.</p>
-                    </div>
-                    <div className="flex w-full flex-col gap-2 sm:max-w-md sm:flex-row">
-                      <select
-                        value={requestSelections[folder.id] || ""}
-                        onChange={(e) => setRequestSelections((prev) => ({ ...prev, [folder.id]: e.target.value }))}
-                        className="w-full rounded-xl border border-border bg-background/70 px-3 py-2 text-sm focus:outline-none focus:border-accent/40"
-                      >
-                        <option value="">Choisir un document</option>
-                        {REQUESTABLE_DOCUMENTS
-                          .filter((document) => !folder.documentRequests.some((request: any) => request.document_key === document.key))
-                          .map((document) => (
-                            <option key={document.key} value={document.key}>{document.label}</option>
-                          ))}
-                      </select>
-                      <Button className="w-full sm:w-auto" variant="glow" size="sm" disabled={!requestSelections[folder.id] || requestingFolder === folder.id} onClick={() => demanderDocument(folder)}>
-                        <Plus className="w-3 h-3 mr-1" />
-                              {requestingFolder === folder.id ? "Ajout..." : "Demander"}
-                      </Button>
-                    </div>
-                  </div>
-
-                  {folder.documentRequests.length === 0 ? (
-                     <p className="mt-4 text-sm text-muted-foreground">Aucun document n'a encore été demandé à ce candidat.</p>
-                  ) : (
-                    <div className="mt-4 grid gap-4 xl:grid-cols-2">
-                      <div className="rounded-2xl border border-amber-500/20 bg-background/40 p-4">
-                        <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
-                          <p className="text-sm font-semibold text-amber-300">En attente du candidat</p>
-                          <span className="rounded-full border border-amber-500/20 bg-amber-500/10 px-2.5 py-1 text-xs font-semibold text-amber-300">
-                            {pendingRequests.length}
-                          </span>
-                        </div>
-                        {pendingRequests.length === 0 ? (
-                           <p className="text-sm text-muted-foreground">Aucune pièce en attente. Tout ce qui a été demandé a déjà été reçu.</p>
-                        ) : (
-                          <div className="space-y-3">
-                            {pendingRequests.map((request: any) => {
-                              const statusMeta = getRequestStatusMeta(request.status);
-                              return (
-                                <div key={request.id} className="rounded-2xl border border-border/60 bg-background/50 p-4">
-                                  <div className="flex flex-wrap items-center gap-2">
-                                    <p className="font-semibold">{request.document_label}</p>
-                                    <span className={`inline-flex rounded-full border px-2.5 py-1 text-xs font-semibold ${statusMeta.className}`}>
-                                      {statusMeta.label}
-                                    </span>
-                                  </div>
-                                  <p className="mt-2 text-xs text-muted-foreground">Demandé le {new Date(request.requested_at).toLocaleDateString("fr-FR")}</p>
-                                  <p className="mt-3 text-xs font-medium text-amber-300">Le candidat n'a pas encore envoyé cette pièce.</p>
-                                </div>
-                              );
-                            })}
-                          </div>
-                        )}
-                      </div>
-
-                      <div className="rounded-2xl border border-emerald-500/20 bg-background/40 p-4">
-                        <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
-                          <p className="text-sm font-semibold text-emerald-300">Reçues et prêtes à consulter</p>
-                          <span className="rounded-full border border-emerald-500/20 bg-emerald-500/10 px-2.5 py-1 text-xs font-semibold text-emerald-300">
-                            {receivedRequests.length}
-                          </span>
-                        </div>
-                        {receivedRequests.length === 0 ? (
-                          <p className="text-sm text-muted-foreground">Aucune pièce reçue pour le moment.</p>
-                        ) : (
-                          <div className="space-y-3">
-                            {receivedRequests.map((request: any) => {
-                              const statusMeta = getRequestStatusMeta(request.status);
-                              return (
-                                <div key={request.id} className="rounded-2xl border border-border/60 bg-background/50 p-4">
-                                  <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
-                                    <div>
-                                      <div className="flex flex-wrap items-center gap-2">
-                                        <p className="font-semibold">{request.document_label}</p>
-                                        <span className={`inline-flex rounded-full border px-2.5 py-1 text-xs font-semibold ${statusMeta.className}`}>
-                                          {statusMeta.label}
-                                        </span>
-                                      </div>
-                                      <p className="mt-2 text-xs text-muted-foreground">Demandé le {new Date(request.requested_at).toLocaleDateString("fr-FR")}</p>
-                                      {request.file_name && (
-                                        <p className="mt-1 text-xs text-emerald-300">Fichier reçu : {request.file_name}</p>
-                                      )}
-                                    </div>
-                                    <Button className="w-full sm:w-auto" variant="ghost-glow" size="sm" onClick={() => ouvrirCheminStockage(request.storage_path)}>
-                                      Ouvrir
-                                    </Button>
-                                  </div>
-                                </div>
-                              );
-                            })}
-                          </div>
-                        )}
-                      </div>
-                    </div>
-                  )}
-                </div>
-
-                <div className="mb-4 flex flex-col gap-3 rounded-2xl border border-border/60 bg-secondary/20 px-4 py-3 sm:flex-row sm:items-center sm:justify-between">
-                  <div>
-                    <p className="text-sm font-semibold">2. Documents partagés pour cette candidature</p>
-                    <p className="text-xs text-muted-foreground mt-1">Vous envoyez ici les contrats, paies ou documents d'intérim propres à ce talent.</p>
-                  </div>
-                </div>
-
-                <div className="grid gap-4">
-                  {folder.categories.map((category: any) => {
-                    const inputId = `upload-shared-ent-${folder.id}-${category.id}`;
-                    const uploadKey = `${category.id}-${folder.id}`;
-                    const ownDocs = category.ownDocs || [];
-                    const partnerDocs = category.partnerDocs || [];
-
-                    return (
-                      <div key={category.id} className="rounded-2xl border border-border/50 bg-background/40 p-5">
-                        <div className="mb-4 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-                          <div className="flex items-center gap-3">
-                            <div className="w-10 h-10 rounded-xl bg-accent/10 flex items-center justify-center">
-                              <category.icon className="w-5 h-5 text-accent" />
-                            </div>
-                            <div>
-                              <p className="font-semibold">{category.label}</p>
-                              <p className="text-xs text-muted-foreground">{category.desc}</p>
-                            </div>
-                          </div>
-                          <div className="w-full sm:w-auto">
-                            <input type="file" id={inputId} className="hidden" accept=".pdf,.doc,.docx,.png,.jpg" onChange={(e) => uploadSharedDocument(e, category.id, folder.id)} />
-                            <Button className="w-full sm:w-auto" variant="ghost-glow" size="sm" disabled={uploading === uploadKey} onClick={() => document.getElementById(inputId)?.click()}>
-                              <Plus className="w-3 h-3 mr-1" />
-                              {uploading === uploadKey ? "Ajout..." : "Ajouter un document"}
-                            </Button>
-                          </div>
-                        </div>
-
-                        <div className="grid gap-4 lg:grid-cols-2">
-                          <div className="rounded-2xl border border-accent/20 bg-accent/5 p-4">
-                            <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-accent">Envoyés par l'entreprise</p>
-                            {ownDocs.length === 0 ? (
-                              <p className="text-xs text-muted-foreground">Aucun document envoyé pour cette catégorie.</p>
-                            ) : (
-                              ownDocs.map((doc: any) => (
-                                <div key={doc.name} className="mb-2 flex flex-col gap-3 rounded-lg bg-secondary/50 px-3 py-3 sm:flex-row sm:items-center sm:justify-between">
-                                  <span className="text-sm break-all sm:flex-1 sm:truncate">{doc.name.replace(/^\d+_/, "")}</span>
-                                  <div className="flex gap-2 self-start sm:ml-2 sm:self-auto">
-                                    <Button variant="ghost-glow" size="sm" onClick={() => telechargerDocument(user.id, category.id, doc.name, folder.id)}>Ouvrir</Button>
-                                    <ConfirmActionDialog
-                                      title="Supprimer ce document partagé ?"
-                                      description="Ce document ne sera plus disponible dans ce dossier candidat. Vous pouvez encore annuler avant validation."
-                                      onConfirm={() => supprimerDocument(category.id, doc.name, folder.id)}
-                                    >
-                                      <button className="text-red-400 p-1 hover:text-red-300"><Trash2 className="w-4 h-4" /></button>
-                                    </ConfirmActionDialog>
-                                  </div>
-                                </div>
-                              ))
-                            )}
-                          </div>
-
-                          <div className="rounded-2xl border border-primary/20 bg-primary/5 p-4">
-                            <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-primary">Envoyés par le talent</p>
-                            {partnerDocs.length === 0 ? (
-                              <p className="text-xs text-muted-foreground">Aucun document reçu du talent pour le moment.</p>
-                            ) : (
-                              partnerDocs.map((doc: any) => (
-                                <div key={doc.name} className="mb-2 flex flex-col gap-3 rounded-lg bg-secondary/50 px-3 py-3 sm:flex-row sm:items-center sm:justify-between">
-                                  <span className="text-sm break-all sm:flex-1 sm:truncate">{doc.name.replace(/^\d+_/, "")}</span>
-                                  <div className="flex gap-2 self-start sm:ml-2 sm:self-auto">
-                                    <Button variant="ghost-glow" size="sm" onClick={() => telechargerDocument(doc.ownerId, category.id, doc.name, folder.id)}>Ouvrir</Button>
-                                  </div>
-                                </div>
-                              ))
-                            )}
-                          </div>
-                        </div>
-                      </div>
-                    );
-                  })}
-                </div>
-                  </>
-                )}
               </div>
-            )})}
-          </div>
-        )}
+
+              {showRequestComposer && (
+                <div className="mt-4 rounded-2xl border border-amber-500/20 bg-amber-500/[0.08] p-4">
+                  <div className="flex flex-col gap-3 md:flex-row md:items-end">
+                    <div className="flex-1">
+                      <label className="mb-1.5 block text-xs font-semibold text-amber-300">Document à demander au candidat</label>
+                      <select value={requestSelections[selectedFolder.id] || ""} onChange={(event) => setRequestSelections((current) => ({ ...current, [selectedFolder.id]: event.target.value }))} className="h-10 w-full rounded-xl border border-border bg-background px-3 text-sm outline-none focus:border-amber-500/40">
+                        <option value="">Choisir un document</option>
+                        {REQUESTABLE_DOCUMENTS.filter((definition) => !(selectedFolder.documentRequests || []).some((request: any) => request.document_key === definition.key)).map((definition) => (
+                          <option key={definition.key} value={definition.key}>{definition.label}</option>
+                        ))}
+                      </select>
+                    </div>
+                    <ConfirmActionDialog title="Valider la demande de document ?" description={`Le candidat ${selectedFolder.talentNom} verra cette demande dans son espace Documents.`} confirmLabel="Envoyer la demande" confirmVariant="glow" onConfirm={() => demanderDocument(selectedFolder)}>
+                      <button type="button" disabled={!requestSelections[selectedFolder.id] || requestingFolder === selectedFolder.id || !documentsRequestsReady} className="inline-flex h-10 items-center justify-center rounded-xl bg-primary px-4 text-sm font-semibold text-primary-foreground disabled:cursor-not-allowed disabled:opacity-50">
+                        {requestingFolder === selectedFolder.id ? "Envoi..." : "Envoyer la demande"}
+                      </button>
+                    </ConfirmActionDialog>
+                  </div>
+                  {!documentsRequestsReady && <p className="mt-2 text-xs text-amber-300">Le partage doit d’abord être activé dans Supabase.</p>}
+                </div>
+              )}
+
+              {showShareComposer && (
+                <div className="mt-4 rounded-2xl border border-primary/20 bg-primary/[0.07] p-4">
+                  <div className="flex flex-col gap-3 md:flex-row md:items-end">
+                    <div className="flex-1">
+                      <label className="mb-1.5 block text-xs font-semibold text-primary">Catégorie du document</label>
+                      <select value={shareCategory} onChange={(event) => setShareCategory(event.target.value)} className="h-10 w-full rounded-xl border border-border bg-background px-3 text-sm outline-none focus:border-primary/40">
+                        {sharedCategories.map((category) => <option key={category.id} value={category.id}>{category.label}</option>)}
+                      </select>
+                    </div>
+                    <input type="file" id={`compact-share-${selectedFolder.id}`} className="hidden" accept={DOCUMENT_ACCEPT_ATTRIBUTE} onChange={(event) => uploadSharedDocument(event, shareCategory, selectedFolder.id)} />
+                    <Button variant="glow" disabled={uploading === `${shareCategory}-${selectedFolder.id}`} onClick={() => document.getElementById(`compact-share-${selectedFolder.id}`)?.click()}>
+                      <Plus className="mr-1.5 h-4 w-4" />
+                      {uploading === `${shareCategory}-${selectedFolder.id}` ? "Ajout..." : "Choisir et partager"}
+                    </Button>
+                  </div>
+                  <p className="mt-2 text-xs text-muted-foreground">Le document sera visible uniquement par votre entreprise et ce talent.</p>
+                </div>
+              )}
+
+              <div className="mt-4 overflow-hidden rounded-2xl border border-border/70">
+                <div className="overflow-x-auto">
+                  <table className="w-full min-w-[760px] text-left">
+                    <thead className="bg-secondary/35 text-xs text-muted-foreground">
+                      <tr>
+                        <th className="px-4 py-3 font-semibold">Document</th>
+                        <th className="px-4 py-3 font-semibold">Catégorie</th>
+                        <th className="px-4 py-3 font-semibold">Partagé par</th>
+                        <th className="px-4 py-3 font-semibold">Statut</th>
+                        <th className="px-4 py-3 text-right font-semibold">Actions</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-border/60">
+                      {visibleCompactRows.length === 0 ? (
+                        <tr><td colSpan={5} className="px-4 py-10 text-center text-sm text-muted-foreground">Aucun document dans cette vue.</td></tr>
+                      ) : visibleCompactRows.map((row: any) => (
+                        <tr key={row.id} className="bg-background/20 transition-colors hover:bg-secondary/15">
+                          <td className="px-4 py-3">
+                            <div className="flex min-w-0 items-center gap-3">
+                              <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-primary/10 text-primary"><FileText className="h-4 w-4" /></span>
+                              <span className="max-w-[280px] truncate text-sm font-medium">{row.name}</span>
+                            </div>
+                          </td>
+                          <td className="px-4 py-3 text-sm text-muted-foreground">{row.category}</td>
+                          <td className="px-4 py-3 text-sm text-muted-foreground">{row.sharedBy}</td>
+                          <td className="px-4 py-3"><span className={`inline-flex rounded-full border px-2.5 py-1 text-xs font-semibold ${row.statusClass}`}>{row.status}</span></td>
+                          <td className="px-4 py-3">
+                            <div className="flex justify-end gap-2">
+                              {row.kind === "received-request" && <Button variant="ghost-glow" size="sm" onClick={() => ouvrirCheminStockage(row.request.storage_path)}>Ouvrir</Button>}
+                              {row.kind === "pending-request" && (
+                                <ConfirmActionDialog title="Supprimer cette demande ?" description={`La demande « ${row.request.document_label} » sera retirée du dossier du candidat.`} confirmLabel="Supprimer" onConfirm={() => supprimerDemandeDocument(row.request)}>
+                                  <button type="button" disabled={deletingRequest === row.request.id} className="inline-flex h-8 items-center rounded-lg border border-red-500/20 px-2.5 text-xs font-semibold text-red-400 hover:text-red-300"><Trash2 className="mr-1 h-3.5 w-3.5" />Supprimer</button>
+                                </ConfirmActionDialog>
+                              )}
+                              {(row.kind === "company-document" || row.kind === "talent-document") && (
+                                <Button variant="ghost-glow" size="sm" onClick={() => telechargerDocument(row.kind === "company-document" ? user.id : row.document.ownerId, row.categoryId, row.document.name, selectedFolder.id)}>Ouvrir</Button>
+                              )}
+                              {row.kind === "company-document" && (
+                                <ConfirmActionDialog title="Supprimer ce document partagé ?" description="Le talent ne pourra plus consulter ce document." onConfirm={() => supprimerDocument(row.categoryId, row.document.name, selectedFolder.id)}>
+                                  <button type="button" aria-label="Supprimer le document partagé" className="p-1.5 text-red-400 hover:text-red-300"><Trash2 className="h-4 w-4" /></button>
+                                </ConfirmActionDialog>
+                              )}
+                            </div>
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+
+              <div className="mt-auto flex items-center gap-2 pt-5 text-xs text-muted-foreground">
+                <Lock className="h-4 w-4 text-primary" />
+                Les documents sont chiffrés et visibles uniquement par les personnes autorisées.
+              </div>
+            </>
+          )}
+        </section>
       </div>
     </div>
   );

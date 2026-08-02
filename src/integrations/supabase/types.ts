@@ -87,6 +87,88 @@ export type Database = {
         }
         Relationships: []
       }
+      account_retention_events: {
+        Row: {
+          created_at: string
+          event_type: string
+          id: string
+          metadata: Json
+          user_id: string
+        }
+        Insert: {
+          created_at?: string
+          event_type: string
+          id?: string
+          metadata?: Json
+          user_id: string
+        }
+        Update: {
+          created_at?: string
+          event_type?: string
+          id?: string
+          metadata?: Json
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "account_retention_events_user_id_fkey"
+            columns: ["user_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["user_id"]
+          },
+        ]
+      }
+      account_retention_status: {
+        Row: {
+          anonymized_at: string | null
+          created_at: string
+          deletion_warning_sent_at: string | null
+          last_seen_at: string
+          reactivated_at: string | null
+          reminder_23d_sent_at: string | null
+          reminder_29d_sent_at: string | null
+          suspended_at: string | null
+          suspension_reason: string | null
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          anonymized_at?: string | null
+          created_at?: string
+          deletion_warning_sent_at?: string | null
+          last_seen_at?: string
+          reactivated_at?: string | null
+          reminder_23d_sent_at?: string | null
+          reminder_29d_sent_at?: string | null
+          suspended_at?: string | null
+          suspension_reason?: string | null
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          anonymized_at?: string | null
+          created_at?: string
+          deletion_warning_sent_at?: string | null
+          last_seen_at?: string
+          reactivated_at?: string | null
+          reminder_23d_sent_at?: string | null
+          reminder_29d_sent_at?: string | null
+          suspended_at?: string | null
+          suspension_reason?: string | null
+          updated_at?: string
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "account_retention_status_user_id_fkey"
+            columns: ["user_id"]
+            isOneToOne: true
+            referencedRelation: "profiles"
+            referencedColumns: ["user_id"]
+          },
+        ]
+      }
       offres: {
         Row: {
           avantages: string | null
@@ -152,6 +234,42 @@ export type Database = {
           {
             foreignKeyName: "offres_entreprise_id_fkey"
             columns: ["entreprise_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["user_id"]
+          },
+        ]
+      }
+      saved_offers: {
+        Row: {
+          created_at: string
+          id: string
+          offre_id: string
+          talent_id: string
+        }
+        Insert: {
+          created_at?: string
+          id?: string
+          offre_id: string
+          talent_id: string
+        }
+        Update: {
+          created_at?: string
+          id?: string
+          offre_id?: string
+          talent_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "saved_offers_offre_id_fkey"
+            columns: ["offre_id"]
+            isOneToOne: false
+            referencedRelation: "offres"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "saved_offers_talent_id_fkey"
+            columns: ["talent_id"]
             isOneToOne: false
             referencedRelation: "profiles"
             referencedColumns: ["user_id"]
@@ -274,6 +392,75 @@ export type Database = {
           {
             foreignKeyName: "document_requests_talent_id_fkey"
             columns: ["talent_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["user_id"]
+          },
+        ]
+      }
+      document_encryption_keys: {
+        Row: {
+          algorithm: string
+          category: string
+          created_at: string
+          created_by: string
+          document_request_id: string | null
+          encrypted_size_bytes: number | null
+          expires_at: string
+          iv_b64: string
+          key_b64: string
+          original_file_name: string
+          original_mime_type: string | null
+          original_size_bytes: number | null
+          owner_id: string
+          relation_id: string | null
+          storage_path: string
+        }
+        Insert: {
+          algorithm?: string
+          category: string
+          created_at?: string
+          created_by?: string
+          document_request_id?: string | null
+          encrypted_size_bytes?: number | null
+          expires_at?: string
+          iv_b64: string
+          key_b64: string
+          original_file_name: string
+          original_mime_type?: string | null
+          original_size_bytes?: number | null
+          owner_id: string
+          relation_id?: string | null
+          storage_path: string
+        }
+        Update: {
+          algorithm?: string
+          category?: string
+          created_at?: string
+          created_by?: string
+          document_request_id?: string | null
+          encrypted_size_bytes?: number | null
+          expires_at?: string
+          iv_b64?: string
+          key_b64?: string
+          original_file_name?: string
+          original_mime_type?: string | null
+          original_size_bytes?: number | null
+          owner_id?: string
+          relation_id?: string | null
+          storage_path?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "document_encryption_keys_document_request_id_fkey"
+            columns: ["document_request_id"]
+            isOneToOne: false
+            referencedRelation: "document_requests"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "document_encryption_keys_owner_id_fkey"
+            columns: ["owner_id"]
             isOneToOne: false
             referencedRelation: "profiles"
             referencedColumns: ["user_id"]
@@ -546,6 +733,37 @@ export type Database = {
           email: string
           full_name: string
           user_id: string
+        }[]
+      }
+      log_document_access: {
+        Args: {
+          p_action: string
+          p_storage_path?: string | null
+          p_file_name?: string | null
+          p_document_request_id?: string | null
+          p_metadata?: Json
+        }
+        Returns: undefined
+      }
+      cleanup_expired_documents: {
+        Args: {
+          p_now?: string
+        }
+        Returns: {
+          storage_path: string
+          deleted_reason: string
+        }[]
+      }
+      touch_account_activity: {
+        Args: {
+          p_reactivate?: boolean
+        }
+        Returns: {
+          is_suspended: boolean
+          suspended_at: string | null
+          suspension_reason: string | null
+          reactivated: boolean
+          last_seen_at: string
         }[]
       }
     }

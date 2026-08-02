@@ -180,6 +180,282 @@
       linear-gradient(180deg, hsl(0 0% 100% / 0.35), transparent 24%);
   }
 
+  .talent-dashboard-shell {
+    background:
+      linear-gradient(180deg, hsl(226 42% 98%), hsl(198 35% 96%) 48%, hsl(0 0% 100%) 100%);
+  }
+
+  .dark .talent-dashboard-shell {
+    background:
+      linear-gradient(180deg, hsl(240 10% 4%), hsl(230 14% 8%) 48%, hsl(240 10% 4%) 100%);
+  }
+
+  .talent-polish-shell {
+    background:
+      linear-gradient(180deg, hsl(0 0% 100% / 0.5), transparent 28%),
+      linear-gradient(90deg, hsl(160 58% 96% / 0.56), hsl(222 48% 97% / 0.82) 46%, hsl(0 0% 100% / 0.92));
+  }
+
+  .dark .talent-polish-shell {
+    background:
+      linear-gradient(180deg, hsl(0 0% 100% / 0.03), transparent 30%),
+      linear-gradient(90deg, hsl(160 24% 10% / 0.24), hsl(232 18% 8% / 0.9) 48%, hsl(240 10% 4% / 0.94));
+  }
+
+  .talent-dashboard-mock {
+    max-width: 1180px;
+    margin-inline: auto;
+  }
+
+  .talent-page-frame {
+    width: 100%;
+    max-width: 1280px;
+    margin-inline: auto;
+  }
+
+  .talent-tab-shell {
+    width: 100%;
+    animation: talent-tab-enter 220ms ease-out;
+  }
+
+  .talent-page-header {
+    @apply relative overflow-hidden rounded-2xl border p-4 sm:p-5;
+    background:
+      radial-gradient(circle at 88% 16%, hsl(var(--primary) / 0.11), transparent 28%),
+      linear-gradient(135deg, hsl(0 0% 100% / 0.98), hsl(220 48% 98% / 0.94));
+    border-color: hsl(var(--primary) / 0.16);
+    box-shadow:
+      0 24px 64px -52px hsl(229 30% 18% / 0.46),
+      inset 0 1px 0 hsl(0 0% 100% / 0.96);
+  }
+
+  .dark .talent-page-header {
+    background:
+      radial-gradient(circle at 88% 16%, hsl(var(--primary) / 0.15), transparent 30%),
+      linear-gradient(135deg, hsl(var(--card) / 0.96), hsl(var(--secondary) / 0.56));
+    border-color: hsl(var(--primary) / 0.2);
+  }
+
+  .talent-page-header-layout {
+    @apply grid gap-4 xl:grid-cols-[minmax(0,1fr)_340px] xl:items-center;
+  }
+
+  .talent-page-header-icon {
+    @apply flex h-10 w-10 shrink-0 items-center justify-center rounded-xl border text-primary;
+    background: hsl(var(--primary) / 0.1);
+    border-color: hsl(var(--primary) / 0.18);
+  }
+
+  .talent-page-kicker {
+    @apply text-[10px] font-semibold uppercase tracking-[0.22em] text-primary;
+  }
+
+  .talent-page-header-aside {
+    @apply rounded-2xl border p-3.5;
+    background: hsl(var(--background) / 0.68);
+    border-color: hsl(var(--border) / 0.64);
+    box-shadow: inset 0 1px 0 hsl(0 0% 100% / 0.7);
+  }
+
+  .dark .talent-page-header-aside {
+    background: hsl(var(--secondary) / 0.45);
+  }
+
+  .talent-header-metric {
+    @apply flex min-w-0 flex-col rounded-xl border px-3 py-2;
+    background: hsl(var(--background) / 0.7);
+    border-color: hsl(var(--border) / 0.62);
+  }
+
+  .talent-header-metric span {
+    @apply truncate text-[10px] font-semibold uppercase tracking-[0.14em] text-muted-foreground;
+  }
+
+  .talent-header-metric strong {
+    @apply mt-1 text-base font-bold text-foreground;
+  }
+
+  .talent-filter-chip {
+    @apply inline-flex items-center rounded-full border px-3 py-1 text-xs font-semibold;
+    background: hsl(var(--background) / 0.68);
+    border-color: hsl(var(--border) / 0.65);
+  }
+
+  .talent-metric-grid {
+    @apply grid gap-3 sm:grid-cols-2 xl:grid-cols-4;
+  }
+
+  .talent-tab-shell .dashboard-panel,
+  .talent-tab-shell .dashboard-stat-card,
+  .talent-tab-shell .dashboard-subcard {
+    border-radius: 1rem;
+  }
+
+  .talent-tab-shell .dashboard-stat-card {
+    min-height: 6.25rem;
+  }
+
+  .talent-profile-showcase,
+  .talent-welcome-panel,
+  .talent-section-card,
+  .talent-security-ribbon {
+    @apply relative overflow-hidden rounded-2xl border;
+    background:
+      linear-gradient(180deg, hsl(0 0% 100% / 0.98), hsl(220 48% 98% / 0.92));
+    border-color: hsl(var(--primary) / 0.13);
+    box-shadow:
+      0 24px 66px -54px hsl(229 30% 18% / 0.45),
+      inset 0 1px 0 hsl(0 0% 100% / 0.95);
+  }
+
+  .talent-profile-showcase::before,
+  .talent-welcome-panel::before,
+  .talent-section-card::before,
+  .talent-security-ribbon::before {
+    content: "";
+    position: absolute;
+    inset: 0;
+    pointer-events: none;
+    background:
+      radial-gradient(circle at top left, hsl(var(--primary) / 0.08), transparent 34%),
+      linear-gradient(180deg, hsl(0 0% 100% / 0.42), transparent 36%);
+  }
+
+  .talent-profile-showcase > *,
+  .talent-welcome-panel > *,
+  .talent-section-card > *,
+  .talent-security-ribbon > * {
+    position: relative;
+    z-index: 1;
+  }
+
+  .dark .talent-profile-showcase,
+  .dark .talent-welcome-panel,
+  .dark .talent-section-card,
+  .dark .talent-security-ribbon {
+    background:
+      linear-gradient(180deg, hsl(var(--card) / 0.96), hsl(var(--secondary) / 0.55));
+    border-color: hsl(var(--primary) / 0.18);
+  }
+
+  .talent-overview-card {
+    @apply flex min-h-[6.7rem] items-center gap-3 rounded-2xl border p-4 text-left transition-all duration-200;
+    background: hsl(0 0% 100% / 0.9);
+    border-color: hsl(var(--border) / 0.72);
+    box-shadow:
+      0 22px 56px -48px hsl(229 30% 18% / 0.46),
+      inset 0 1px 0 hsl(0 0% 100% / 0.92);
+  }
+
+  .talent-overview-card:hover {
+    transform: translateY(-1px);
+    border-color: hsl(var(--primary) / 0.28);
+    background: hsl(0 0% 100% / 0.98);
+  }
+
+  .dark .talent-overview-card {
+    background: hsl(var(--card) / 0.86);
+    border-color: hsl(var(--border) / 0.74);
+  }
+
+  .talent-row-card {
+    @apply flex w-full items-center gap-3 rounded-2xl border p-3 text-left transition-all duration-200;
+    min-height: 4.35rem;
+    background: hsl(var(--background) / 0.64);
+    border-color: hsl(var(--border) / 0.66);
+  }
+
+  .talent-row-card:hover {
+    border-color: hsl(var(--primary) / 0.28);
+    background: hsl(var(--secondary) / 0.36);
+  }
+
+  .talent-priority-action {
+    @apply flex w-full items-start gap-3 rounded-2xl border p-4 text-left transition-all duration-200;
+    background:
+      linear-gradient(135deg, hsl(var(--background) / 0.82), hsl(var(--primary) / 0.08));
+    border-color: hsl(var(--primary) / 0.2);
+  }
+
+  .talent-priority-action:hover {
+    transform: translateY(-1px);
+    border-color: hsl(var(--primary) / 0.34);
+    box-shadow: 0 22px 50px -42px hsl(var(--primary) / 0.7);
+  }
+
+  .dark .talent-priority-action {
+    background:
+      linear-gradient(135deg, hsl(var(--secondary) / 0.62), hsl(var(--primary) / 0.1));
+  }
+
+  .talent-security-action {
+    @apply flex items-center gap-3 rounded-2xl border p-3 text-left transition-all duration-200;
+    background: hsl(var(--card) / 0.65);
+    border-color: hsl(var(--border) / 0.6);
+  }
+
+  .talent-security-action:hover {
+    border-color: hsl(var(--primary) / 0.28);
+    background: hsl(var(--background) / 0.8);
+  }
+
+  .talent-overview-card:focus-visible,
+  .talent-row-card:focus-visible,
+  .talent-priority-action:focus-visible,
+  .talent-security-action:focus-visible {
+    outline: 2px solid hsl(var(--primary) / 0.7);
+    outline-offset: 3px;
+  }
+
+  .talent-brand-avatar {
+    @apply flex h-11 w-11 shrink-0 items-center justify-center rounded-xl text-sm font-bold;
+  }
+
+  .talent-mini-stat {
+    @apply relative flex items-center gap-3 overflow-hidden rounded-2xl border p-4 transition-all duration-200;
+    background: hsl(0 0% 100% / 0.72);
+    border-color: hsl(var(--border) / 0.72);
+    box-shadow: inset 0 1px 0 hsl(0 0% 100% / 0.85);
+  }
+
+  .talent-mini-stat:hover {
+    transform: translateY(-1px);
+    border-color: hsl(var(--primary) / 0.26);
+    background: hsl(0 0% 100% / 0.9);
+  }
+
+  .dark .talent-mini-stat {
+    background: hsl(var(--secondary) / 0.48);
+    border-color: hsl(var(--border) / 0.75);
+  }
+
+  .talent-sidebar {
+    border-right: 1px solid hsl(var(--primary) / 0.12);
+  }
+
+  .light .talent-sidebar {
+    background:
+      linear-gradient(180deg, hsl(0 0% 100% / 0.98), hsl(214 42% 97% / 0.95));
+    box-shadow:
+      inset -1px 0 0 hsl(var(--primary) / 0.08),
+      30px 0 72px -58px hsl(229 30% 18% / 0.32);
+  }
+
+  .talent-polish-shell .dashboard-panel,
+  .talent-polish-shell .dashboard-stat-card,
+  .talent-polish-shell .dashboard-subcard {
+    border-color: hsl(var(--primary) / 0.16);
+  }
+
+  .light .talent-polish-shell .dashboard-panel,
+  .light .talent-polish-shell .dashboard-stat-card {
+    background:
+      linear-gradient(180deg, hsl(0 0% 100% / 0.99), hsl(220 48% 98% / 0.94));
+    box-shadow:
+      0 26px 70px -54px hsl(229 30% 18% / 0.42),
+      inset 0 1px 0 hsl(0 0% 100% / 0.98);
+  }
+
   .dashboard-profile-card {
     @apply rounded-3xl border px-4 py-5 text-center;
     background: linear-gradient(180deg, hsl(var(--card) / 0.94), hsl(var(--card) / 0.7));
@@ -414,10 +690,401 @@
     -webkit-mask-composite: xor;
     mask-composite: exclude;
   }
+
+  /* Talent workspace — direction validée sur les maquettes de juillet 2026 */
+  .talent-dashboard-shell,
+  .light .talent-dashboard-shell {
+    background: #fbfcff;
+  }
+
+  .talent-dashboard-shell::before,
+  .talent-profile-showcase::before,
+  .talent-welcome-panel::before,
+  .talent-section-card::before,
+  .talent-security-ribbon::before,
+  .talent-polish-shell .dashboard-panel::before,
+  .talent-polish-shell .dashboard-stat-card::before,
+  .talent-polish-shell .dashboard-hero-card::before {
+    display: none;
+  }
+
+  .talent-sidebar,
+  .light .talent-sidebar {
+    background: #ffffff;
+    border-right: 1px solid #e7eaf2;
+    box-shadow: none;
+  }
+
+  .talent-sidebar .dashboard-nav-item {
+    min-height: 2.8rem;
+    border-radius: 0.65rem;
+    padding-inline: 0.8rem;
+    color: #445074;
+  }
+
+  .talent-sidebar .dashboard-nav-item:hover {
+    background: #f7f7ff;
+    box-shadow: none;
+    color: #1c2442;
+  }
+
+  .talent-sidebar .dashboard-nav-item-primary-active,
+  .light .talent-sidebar .dashboard-nav-item-primary-active {
+    color: hsl(var(--primary));
+    border-color: hsl(var(--primary) / 0.16);
+    background: hsl(var(--primary) / 0.075);
+    box-shadow: inset 0 0 0 1px hsl(var(--primary) / 0.025);
+  }
+
+  .talent-polish-shell,
+  .light .talent-polish-shell {
+    background: #fbfcff;
+  }
+
+  .talent-page-frame {
+    max-width: 1440px;
+  }
+
+  .talent-page-header {
+    overflow: visible;
+    padding: 0 0 0.25rem;
+    border: 0;
+    border-radius: 0;
+    background: transparent;
+    box-shadow: none;
+  }
+
+  .talent-page-header-layout {
+    display: block;
+  }
+
+  .talent-page-header-icon,
+  .talent-page-kicker,
+  .talent-page-header-aside {
+    display: none;
+  }
+
+  .talent-page-header h1 {
+    margin-top: 0;
+    color: #151d3b;
+    font-size: clamp(1.45rem, 2vw, 1.75rem);
+    line-height: 1.2;
+  }
+
+  .talent-page-header p.mt-3 {
+    margin-top: 0.35rem;
+    line-height: 1.5;
+  }
+
+  .talent-page-header > .talent-page-header-layout > div > .mt-4 {
+    margin-top: 0.75rem;
+  }
+
+  .talent-simple-page-heading {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 1rem;
+  }
+
+  .talent-simple-page-heading h1 {
+    color: #151d3b;
+    font-size: clamp(1.45rem, 2vw, 1.75rem);
+    font-weight: 700;
+    letter-spacing: -0.02em;
+  }
+
+  .talent-simple-page-heading p {
+    margin-top: 0.3rem;
+    color: hsl(var(--muted-foreground));
+    font-size: 0.875rem;
+  }
+
+  .talent-profile-showcase,
+  .talent-welcome-panel,
+  .talent-section-card,
+  .talent-security-ribbon,
+  .light .talent-profile-showcase,
+  .light .talent-welcome-panel,
+  .light .talent-section-card,
+  .light .talent-security-ribbon {
+    background: #ffffff;
+    border-color: #e5e9f2;
+    border-radius: 0.75rem;
+    box-shadow: 0 8px 26px -24px rgb(31 38 79 / 34%);
+  }
+
+  .talent-welcome-panel {
+    overflow: visible;
+    border: 0;
+    border-radius: 0;
+    background: transparent;
+    box-shadow: none;
+  }
+
+  .talent-welcome-panel > div {
+    align-items: center;
+  }
+
+  .talent-dashboard-kpis > :nth-child(n + 5) {
+    display: none;
+  }
+
+  .talent-overview-card,
+  .light .talent-overview-card {
+    min-height: 7.75rem;
+    border-color: #e4e8f1;
+    border-radius: 0.75rem;
+    background: #ffffff;
+    box-shadow: 0 10px 30px -28px rgb(29 37 74 / 38%);
+  }
+
+  .talent-overview-card:hover {
+    transform: none;
+    border-color: hsl(var(--primary) / 0.34);
+    background: #ffffff;
+    box-shadow: 0 12px 32px -26px hsl(var(--primary) / 0.3);
+  }
+
+  .talent-dashboard-grid > .talent-section-card {
+    grid-column: span 5 / span 5;
+  }
+
+  @media (min-width: 1280px) {
+    .talent-dashboard-grid > .talent-section-card:nth-child(1) {
+      order: 1;
+      grid-column: span 3 / span 3;
+    }
+
+    .talent-dashboard-grid > .talent-section-card:nth-child(3) {
+      order: 2;
+      grid-column: span 2 / span 2;
+    }
+
+    .talent-dashboard-grid > .talent-section-card:nth-child(2) {
+      order: 3;
+      grid-column: span 3 / span 3;
+    }
+
+    .talent-dashboard-grid > .talent-section-card:nth-child(4) {
+      order: 4;
+      grid-column: span 2 / span 2;
+    }
+  }
+
+  .talent-row-card {
+    min-height: 4rem;
+    border: 0;
+    border-bottom: 1px solid #edf0f6;
+    border-radius: 0;
+    background: transparent;
+    padding-inline: 0.25rem;
+  }
+
+  .talent-row-card:last-child {
+    border-bottom: 0;
+  }
+
+  .talent-row-card:hover {
+    border-color: #edf0f6;
+    background: #fafaff;
+  }
+
+  .talent-security-ribbon {
+    border-color: #dcefe4;
+    background: #fbfffd;
+  }
+
+  .talent-polish-shell .dashboard-panel,
+  .talent-polish-shell .dashboard-stat-card,
+  .talent-polish-shell .dashboard-subcard,
+  .light .talent-polish-shell .dashboard-panel,
+  .light .talent-polish-shell .dashboard-stat-card,
+  .light .talent-polish-shell .dashboard-subcard {
+    border-color: #e4e8f1;
+    background: #ffffff;
+    box-shadow: 0 8px 28px -26px rgb(28 36 75 / 36%);
+  }
+
+  .talent-polish-shell .dashboard-subcard {
+    border-radius: 0.7rem;
+    box-shadow: none;
+  }
+
+  .talent-tab-shell .dashboard-panel,
+  .talent-tab-shell .dashboard-stat-card,
+  .talent-tab-shell .dashboard-subcard {
+    border-radius: 0.75rem;
+  }
+
+  .talent-tab-shell input,
+  .talent-tab-shell textarea,
+  .talent-tab-shell select {
+    background: #ffffff;
+  }
+
+  [data-profile-editing="false"] .talent-profile-editor {
+    display: none;
+  }
+
+  [data-profile-editing="false"] .talent-profile-content-grid {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  [data-profile-editing="true"] .talent-profile-preview-only,
+  [data-profile-editing="true"] .talent-profile-summary {
+    display: none;
+  }
+
+  [data-profile-editing="true"] .talent-profile-content-grid {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .dark .talent-sidebar {
+    background: hsl(var(--background));
+    border-right-color: hsl(var(--border));
+  }
+
+  .dark .talent-sidebar .dashboard-nav-item {
+    color: hsl(var(--muted-foreground));
+  }
+
+  .dark .talent-sidebar .dashboard-nav-item:hover {
+    color: hsl(var(--foreground));
+    background: hsl(var(--secondary) / 0.72);
+  }
+
+  .dark .talent-sidebar .dashboard-nav-item-primary-active {
+    color: hsl(var(--primary));
+    border-color: hsl(var(--primary) / 0.28);
+    background: hsl(var(--primary) / 0.13);
+  }
+
+  .dark .talent-polish-shell {
+    background:
+      linear-gradient(180deg, hsl(var(--primary) / 0.04), transparent 22%),
+      hsl(var(--background));
+  }
+
+  .dark .talent-page-header h1,
+  .dark .talent-simple-page-heading h1 {
+    color: hsl(var(--foreground));
+  }
+
+  .dark .talent-profile-showcase,
+  .dark .talent-section-card,
+  .dark .talent-security-ribbon {
+    border-color: hsl(var(--border));
+    background: hsl(var(--card));
+    box-shadow: 0 14px 36px -30px hsl(0 0% 0% / 0.72);
+  }
+
+  .dark .talent-overview-card,
+  .dark .talent-mini-stat {
+    border-color: hsl(var(--border));
+    background: hsl(var(--card));
+    box-shadow: 0 14px 34px -30px hsl(0 0% 0% / 0.7);
+  }
+
+  .dark .talent-overview-card:hover,
+  .dark .talent-mini-stat:hover {
+    border-color: hsl(var(--primary) / 0.38);
+    background: hsl(var(--secondary) / 0.62);
+  }
+
+  .dark .talent-row-card {
+    border-bottom-color: hsl(var(--border));
+  }
+
+  .dark .talent-row-card:hover {
+    border-color: hsl(var(--border));
+    background: hsl(var(--secondary) / 0.48);
+  }
+
+  .dark .talent-security-ribbon {
+    border-color: hsl(150 42% 28%);
+    background: hsl(150 28% 9%);
+  }
+
+  .dark .talent-polish-shell .dashboard-panel,
+  .dark .talent-polish-shell .dashboard-stat-card {
+    border-color: hsl(var(--border));
+    background: hsl(var(--card));
+    box-shadow: 0 14px 38px -32px hsl(0 0% 0% / 0.76);
+  }
+
+  .dark .talent-polish-shell .dashboard-subcard {
+    border-color: hsl(var(--border));
+    background: hsl(var(--secondary) / 0.42);
+    box-shadow: none;
+  }
+
+  .dark .talent-tab-shell input,
+  .dark .talent-tab-shell textarea,
+  .dark .talent-tab-shell select {
+    background: hsl(var(--secondary) / 0.55);
+    color: hsl(var(--foreground));
+  }
+
+  .dark .talent-tab-shell input::placeholder,
+  .dark .talent-tab-shell textarea::placeholder {
+    color: hsl(var(--muted-foreground));
+  }
+
+  @media (min-width: 1024px) {
+    [data-profile-editing="false"] .talent-profile-summary {
+      display: grid;
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+      gap: 1rem;
+    }
+  }
+
+  [data-talent-tab="mes-candidatures"] .talent-metric-grid {
+    display: none;
+  }
+
+  [data-talent-tab="offres"] .talent-tab-shell > .dashboard-panel,
+  [data-talent-tab="offres-enregistrees"] .talent-tab-shell > .dashboard-panel {
+    border-radius: 0.75rem;
+  }
+
+  @media (max-width: 767px) {
+    .talent-simple-page-heading {
+      align-items: flex-start;
+      flex-direction: column;
+    }
+
+    .talent-welcome-panel > div {
+      display: block;
+    }
+
+    .talent-welcome-panel > div > div:last-child {
+      margin-top: 0.75rem;
+      justify-content: flex-start;
+      flex-wrap: wrap;
+    }
+  }
 }
 
 @layer utilities {
   .section-padding {
     @apply px-4 sm:px-6 lg:px-8 py-20 lg:py-28;
+  }
+}
+
+@keyframes talent-tab-enter {
+  from {
+    opacity: 0;
+    transform: translateY(4px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .talent-tab-shell {
+    animation: none;
   }
 }

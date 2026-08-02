@@ -17,6 +17,31 @@ const jsonResponse = (status: number, body: Record<string, unknown>) =>
     },
   });
 
+const ALLOWED_RETURN_ORIGINS = new Set([
+  "https://www.spottedtalent.fr",
+  "https://spottedtalent.fr",
+  "http://localhost:8080",
+  "http://localhost:8081",
+  "http://127.0.0.1:8080",
+  "http://127.0.0.1:8081",
+]);
+
+const getSiteUrl = () => Deno.env.get("SITE_URL") || "https://www.spottedtalent.fr";
+
+const safeReturnUrl = (value: unknown, fallbackPath: string) => {
+  const fallback = new URL(fallbackPath, getSiteUrl()).toString();
+  if (typeof value !== "string" || !value.trim()) return fallback;
+
+  try {
+    const url = new URL(value);
+    if (!ALLOWED_RETURN_ORIGINS.has(url.origin)) return fallback;
+    if (!url.pathname.startsWith("/entreprise/dashboard")) return fallback;
+    return url.toString();
+  } catch {
+    return fallback;
+  }
+};
+
 const PORTAL_CONFIGURATION_NAME = "Spotted Talent - Portail client";
 
 const PLAN_PRICE_KEYS = {
@@ -276,10 +301,7 @@ serve(async (req) => {
     body = {};
   }
 
-  const returnUrl =
-    typeof body.returnUrl === "string" && body.returnUrl.trim()
-      ? body.returnUrl
-      : `${new URL(req.url).origin}/entreprise/dashboard?tab=abonnement`;
+  const returnUrl = safeReturnUrl(body.returnUrl, "/entreprise/dashboard?tab=abonnement");
 
   const stripe = new Stripe(stripeSecretKey, {
     apiVersion: "2024-04-10",

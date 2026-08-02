@@ -18,6 +18,31 @@ const jsonResponse = (status: number, body: Record<string, unknown>) =>
     },
   });
 
+const ALLOWED_RETURN_ORIGINS = new Set([
+  "https://www.spottedtalent.fr",
+  "https://spottedtalent.fr",
+  "http://localhost:8080",
+  "http://localhost:8081",
+  "http://127.0.0.1:8080",
+  "http://127.0.0.1:8081",
+]);
+
+const getSiteUrl = () => Deno.env.get("SITE_URL") || "https://www.spottedtalent.fr";
+
+const safeReturnUrl = (value: unknown, fallbackPath: string) => {
+  const fallback = new URL(fallbackPath, getSiteUrl()).toString();
+  if (typeof value !== "string" || !value.trim()) return fallback;
+
+  try {
+    const url = new URL(value);
+    if (!ALLOWED_RETURN_ORIGINS.has(url.origin)) return fallback;
+    if (!url.pathname.startsWith("/entreprise/dashboard")) return fallback;
+    return url.toString();
+  } catch {
+    return fallback;
+  }
+};
+
 const PLAN_PRICE_KEYS: Record<string, Record<string, string>> = {
   starter: {
     monthly: "STRIPE_PRICE_STARTER_MONTHLY",
@@ -140,14 +165,14 @@ serve(async (req) => {
   }
 
   const billingProfile = body.billingProfile || {};
-  const successUrl =
-    typeof body.successUrl === "string" && body.successUrl.trim()
-      ? body.successUrl
-      : `${new URL(req.url).origin}/entreprise/dashboard?tab=abonnement&billing_status=success&plan=${planId}&cycle=${billingCycle}`;
-  const cancelUrl =
-    typeof body.cancelUrl === "string" && body.cancelUrl.trim()
-      ? body.cancelUrl
-      : `${new URL(req.url).origin}/entreprise/dashboard?tab=abonnement&billing_status=cancel`;
+  const successUrl = safeReturnUrl(
+    body.successUrl,
+    `/entreprise/dashboard?tab=abonnement&billing_status=success&plan=${planId}&cycle=${billingCycle}`,
+  );
+  const cancelUrl = safeReturnUrl(
+    body.cancelUrl,
+    "/entreprise/dashboard?tab=abonnement&billing_status=cancel",
+  );
 
   const stripe = new Stripe(stripeSecretKey, {
     apiVersion: "2024-04-10",

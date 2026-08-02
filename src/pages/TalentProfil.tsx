@@ -3,6 +3,7 @@ import { useNavigate, useParams } from "react-router-dom";
 import { Button } from "@/components/ui/button";
 import ThemeToggle from "@/components/ThemeToggle";
 import { supabase } from "@/integrations/supabase/client";
+import { openPrivateDocument } from "@/lib/documentSecurity";
 import {
   formatTalentAvailabilityLabel,
   parseTalentAvailabilityFromBio,
@@ -28,8 +29,8 @@ const TalentProfil = () => {
   const navigate = useNavigate();
   const [profil, setProfil] = useState<any>(null);
   const [avatarUrl, setAvatarUrl] = useState<string | null>(null);
-  const [cvUrl, setCvUrl] = useState<string | null>(null);
-  const [lettreUrl, setLettreUrl] = useState<string | null>(null);
+  const [cvPath, setCvPath] = useState<string | null>(null);
+  const [lettrePath, setLettrePath] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
@@ -49,14 +50,12 @@ const TalentProfil = () => {
 
         const { data: cvList } = await supabase.storage.from("documents").list(`${id}/cv`);
         if (cvList && cvList.length > 0) {
-          const { data } = await supabase.storage.from("documents").createSignedUrl(`${id}/cv/${cvList[0].name}`, 3600);
-          if (data?.signedUrl) setCvUrl(data.signedUrl);
+          setCvPath(`${id}/cv/${cvList[0].name}`);
         }
 
         const { data: lettreList } = await supabase.storage.from("documents").list(`${id}/lettre`);
         if (lettreList && lettreList.length > 0) {
-          const { data } = await supabase.storage.from("documents").createSignedUrl(`${id}/lettre/${lettreList[0].name}`, 3600);
-          if (data?.signedUrl) setLettreUrl(data.signedUrl);
+          setLettrePath(`${id}/lettre/${lettreList[0].name}`);
         }
       }
 
@@ -274,11 +273,11 @@ const TalentProfil = () => {
               <div className="space-y-1">
                 <p className="text-base font-semibold text-foreground">CV</p>
                 <p className="text-sm text-muted-foreground">
-                  {cvUrl ? "Document disponible pour consultation" : "Aucun CV uploadé"}
+                  {cvPath ? "Document disponible pour consultation" : "Aucun CV uploadé"}
                 </p>
               </div>
-              {cvUrl ? (
-                <Button variant="glow" size="sm" className="w-full max-w-xs" onClick={() => window.open(cvUrl, "_blank")}>
+              {cvPath ? (
+                <Button variant="glow" size="sm" className="w-full max-w-xs" onClick={() => void openPrivateDocument(cvPath, { metadata: { source: "talent_profile", category: "cv" } })}>
                   Voir le CV
                 </Button>
               ) : null}
@@ -289,11 +288,11 @@ const TalentProfil = () => {
               <div className="space-y-1">
                 <p className="text-base font-semibold text-foreground">Lettre de motivation</p>
                 <p className="text-sm text-muted-foreground">
-                  {lettreUrl ? "Document disponible pour consultation" : "Aucune lettre uploadée"}
+                  {lettrePath ? "Document disponible pour consultation" : "Aucune lettre uploadée"}
                 </p>
               </div>
-              {lettreUrl ? (
-                <Button variant="glow" size="sm" className="w-full max-w-xs" onClick={() => window.open(lettreUrl, "_blank")}>
+              {lettrePath ? (
+                <Button variant="glow" size="sm" className="w-full max-w-xs" onClick={() => void openPrivateDocument(lettrePath, { metadata: { source: "talent_profile", category: "lettre" } })}>
                   Voir la lettre
                 </Button>
               ) : null}

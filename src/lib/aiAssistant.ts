@@ -15,6 +15,21 @@ export const requestAiContent = async (
   });
 
   if (error) {
+    const context = (error as { context?: unknown }).context;
+
+    if (context instanceof Response) {
+      try {
+        const errorBody = await context.clone().json();
+        if (typeof errorBody?.error === "string") {
+          throw new Error(errorBody.error);
+        }
+      } catch (readError) {
+        if (readError instanceof Error && readError.message) {
+          throw readError;
+        }
+      }
+    }
+
     throw new Error("ai_service_unavailable");
   }
 

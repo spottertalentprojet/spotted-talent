@@ -12,7 +12,7 @@ const Footer = () => (
         <Link to="/cgu" className="transition-colors hover:text-foreground">
           Mentions légales & CGU
         </Link>
-        <Link to="/cgu" className="transition-colors hover:text-foreground">
+        <Link to="/confidentialite" className="transition-colors hover:text-foreground">
           Confidentialité
         </Link>
         <a href="mailto:contact@spottedtalent.fr" className="transition-colors hover:text-foreground">
