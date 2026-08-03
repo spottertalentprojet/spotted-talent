@@ -11,8 +11,8 @@ Renforcer la protection juridique et technique des comptes Talent et Entreprise 
 - Confirmation e-mail prise en compte a la creation de compte.
 - Blocage applicatif des comptes non confirmes.
 - Message clair quand un utilisateur tente d'entrer sans avoir confirme son e-mail.
-- Panneau "Securite du compte" dans les profils Talent et Entreprise.
-- Activation possible de la double authentification par application TOTP : Google Authenticator, Microsoft Authenticator ou Authy.
+- Panneau "Securite du compte" dans les profils Talent et Entreprise, ainsi que dans l'administration.
+- Activation de la double authentification proposee uniquement aux comptes Entreprise et Admin : Google Authenticator, Microsoft Authenticator ou Authy.
 - Affichage d'un QR code et d'un code manuel pour enroler l'application d'authentification.
 - Verification du code a 6 chiffres avant activation de la double authentification.
 - Challenge MFA obligatoire a la connexion lorsque le compte possede un facteur TOTP verifie.
@@ -34,6 +34,7 @@ Renforcer la protection juridique et technique des comptes Talent et Entreprise 
 
 ## Points a noter
 
-- La double authentification TOTP est une mesure forte, mais elle depend de l'activation du facteur par l'utilisateur.
+- La double authentification TOTP est volontaire pour les comptes Entreprise et Admin. Elle n'est pas proposee aux nouveaux comptes Talent afin de conserver une connexion simple.
+- Un Talent ayant deja active un facteur conserve la possibilite de le desactiver depuis son espace.
 - Pour une obligation stricte pour tous les comptes entreprise, il faudra ajouter une regle produit : acces bloque tant que la 2FA n'est pas activee.
 - Les reglages Supabase restent indispensables : le code applicatif ne remplace pas l'activation de "Confirm email" dans le tableau de bord Supabase.

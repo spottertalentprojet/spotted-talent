@@ -23,6 +23,7 @@ import {
 } from "@/lib/accountDeletion";
 import { reportClientError } from "@/lib/errorMonitoring";
 import { translateAuthError } from "@/lib/authMessages";
+import { canEnrollMfaForRole, type SecurityAccountRole } from "@/lib/mfaPolicy";
 
 type TotpFactor = {
   id: string;
@@ -108,7 +109,7 @@ const AccountSecurityPanel = ({
   role,
 }: {
   user: User;
-  role?: "talent" | "entreprise";
+  role?: SecurityAccountRole;
 }) => {
   const [loadingFactors, setLoadingFactors] = useState(false);
   const [enrolling, setEnrolling] = useState(false);
@@ -122,6 +123,8 @@ const AccountSecurityPanel = ({
 
   const confirmedEmail = useMemo(() => emailIsConfirmed(user), [user]);
   const hasMfa = verifiedFactors.length > 0;
+  const canEnrollMfa = canEnrollMfaForRole(role);
+  const showMfaManagement = canEnrollMfa || hasMfa;
 
   const refreshFactors = async () => {
     setLoadingFactors(true);
@@ -256,16 +259,20 @@ const AccountSecurityPanel = ({
           </div>
           <h3 className="text-xl font-bold text-foreground">Protection renforcée</h3>
           <p className="mt-2 max-w-3xl text-sm leading-6 text-muted-foreground">
-            Vérification e-mail, double authentification et contrôle de session pour protéger les données personnelles et les documents sensibles.
+            {canEnrollMfa
+              ? "Vérification e-mail, double authentification et contrôle de session pour protéger les données sensibles."
+              : "Vérification e-mail et contrôle de session pour protéger votre compte sans compliquer vos connexions."}
           </p>
         </div>
-        <Button variant="outline" size="sm" onClick={refreshFactors} disabled={loadingFactors}>
-          <RefreshCw className={`mr-2 h-4 w-4 ${loadingFactors ? "animate-spin" : ""}`} />
-          Vérifier
-        </Button>
+        {showMfaManagement && (
+          <Button variant="outline" size="sm" onClick={refreshFactors} disabled={loadingFactors}>
+            <RefreshCw className={`mr-2 h-4 w-4 ${loadingFactors ? "animate-spin" : ""}`} />
+            Vérifier
+          </Button>
+        )}
       </div>
 
-      <div className="mt-5 grid gap-4 lg:grid-cols-2">
+      <div className={`mt-5 grid gap-4 ${showMfaManagement ? "lg:grid-cols-2" : ""}`}>
         <div className="dashboard-subcard p-4">
           <div className="flex items-start gap-3">
             <MailCheck className={confirmedEmail ? "mt-1 h-5 w-5 text-emerald-600" : "mt-1 h-5 w-5 text-amber-500"} />
@@ -283,7 +290,7 @@ const AccountSecurityPanel = ({
           </div>
         </div>
 
-        <div className="dashboard-subcard p-4">
+        {showMfaManagement && <div className="dashboard-subcard p-4">
           <div className="flex items-start gap-3">
             <KeyRound className={hasMfa ? "mt-1 h-5 w-5 text-emerald-600" : "mt-1 h-5 w-5 text-primary"} />
             <div className="min-w-0 flex-1">
@@ -309,15 +316,15 @@ const AccountSecurityPanel = ({
                     </div>
                   ))}
                 </div>
-              ) : (
+              ) : canEnrollMfa ? (
                 <Button className="mt-4" variant="glow" onClick={startEnrollment} disabled={enrolling}>
                   <Smartphone className="mr-2 h-4 w-4" />
                   {enrolling ? "Préparation..." : "Activer la double authentification"}
                 </Button>
-              )}
+              ) : null}
             </div>
           </div>
-        </div>
+        </div>}
       </div>
 
       {enrollment && (
@@ -365,7 +372,7 @@ const AccountSecurityPanel = ({
         </div>
       )}
 
-      <div className="mt-5 rounded-xl border border-destructive/25 bg-destructive/5 p-4 sm:p-5">
+      {role !== "admin" && <div className="mt-5 rounded-xl border border-destructive/25 bg-destructive/5 p-4 sm:p-5">
         <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
           <div className="flex items-start gap-3">
             <AlertTriangle className="mt-0.5 h-5 w-5 shrink-0 text-destructive" />
@@ -430,7 +437,7 @@ const AccountSecurityPanel = ({
             </AlertDialogContent>
           </AlertDialog>
         </div>
-      </div>
+      </div>}
     </section>
   );
 };

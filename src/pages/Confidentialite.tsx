@@ -101,7 +101,7 @@ const Confidentialite = () => {
           <ul className="list-disc space-y-1 pl-6">
             <li>authentification sécurisée par e-mail ou Google ;</li>
             <li>confirmation e-mail à la création du compte avant accès complet ;</li>
-            <li>double authentification par application TOTP, comme Google Authenticator ou Microsoft Authenticator, lorsque l'utilisateur l'active ;</li>
+            <li>double authentification facultative par application TOTP pour les comptes Entreprise et Administration ;</li>
             <li>règles d'accès par rôle et par utilisateur dans la base de données ;</li>
             <li>stockage privé des documents, sans accès public direct ;</li>
             <li>liens temporaires pour ouvrir les fichiers ;</li>

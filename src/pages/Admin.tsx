@@ -7,6 +7,8 @@ import ConfirmActionDialog from "@/components/ConfirmActionDialog";
 import { Sparkles, Users, Building2, Target, FileText, Trash2, LogOut, BarChart3, Lock, Mail } from "lucide-react";
 import { toast } from "sonner";
 import { formatStoredMessageText } from "@/lib/utils";
+import AccountSecurityPanel from "@/components/AccountSecurityPanel";
+import type { User } from "@supabase/supabase-js";
 
 const ADMIN_EMAIL = "contact@spottedtalent.fr";
 
@@ -14,6 +16,7 @@ const Admin = () => {
   const navigate = useNavigate();
   const [loading, setLoading] = useState(true);
   const [connecte, setConnecte] = useState(false);
+  const [adminUser, setAdminUser] = useState<User | null>(null);
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [loginLoading, setLoginLoading] = useState(false);
@@ -27,6 +30,7 @@ const Admin = () => {
     const verifierAdmin = async () => {
       const { data: { user } } = await supabase.auth.getUser();
       if (user && user.email === ADMIN_EMAIL) {
+        setAdminUser(user);
         setConnecte(true);
         chargerTout();
       }
@@ -43,8 +47,9 @@ const Admin = () => {
     }
     setLoginLoading(true);
     try {
-      const { error } = await supabase.auth.signInWithPassword({ email, password });
+      const { data, error } = await supabase.auth.signInWithPassword({ email, password });
       if (error) throw error;
+      setAdminUser(data.user);
       setConnecte(true);
       chargerTout();
       toast.success("Connexion admin réussie");
@@ -128,6 +133,7 @@ const Admin = () => {
     { id: "talents", label: `Talents (${stats.talents})`, icon: Users },
     { id: "entreprises", label: `Entreprises (${stats.entreprises})`, icon: Building2 },
     { id: "offres", label: `Offres (${stats.offres})`, icon: Target },
+    { id: "security", label: "Sécurité", icon: Lock },
   ];
 
   return (
@@ -152,7 +158,7 @@ const Admin = () => {
           ))}
         </nav>
         <div className="p-4 border-t border-border/50">
-          <Button variant="ghost-glow" size="sm" className="w-full" onClick={async () => { await supabase.auth.signOut(); setConnecte(false); }}>
+          <Button variant="ghost-glow" size="sm" className="w-full" onClick={async () => { await supabase.auth.signOut(); setAdminUser(null); setConnecte(false); }}>
             <LogOut className="w-4 h-4 mr-2" /> Déconnexion
           </Button>
         </div>
@@ -300,6 +306,16 @@ const Admin = () => {
                 </div>
               ))}
             </div>
+          </div>
+        )}
+
+        {activeTab === "security" && adminUser && (
+          <div>
+            <h1 className="mb-2 text-3xl font-bold">Sécurité du compte administrateur</h1>
+            <p className="mb-8 text-muted-foreground">
+              Activez une application d’authentification pour protéger l’accès aux données de la plateforme.
+            </p>
+            <AccountSecurityPanel user={adminUser} role="admin" />
           </div>
         )}
       </main>
