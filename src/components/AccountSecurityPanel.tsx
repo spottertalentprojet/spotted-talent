@@ -23,7 +23,7 @@ import {
 } from "@/lib/accountDeletion";
 import { reportClientError } from "@/lib/errorMonitoring";
 import { translateAuthError } from "@/lib/authMessages";
-import { canEnrollMfaForRole, type SecurityAccountRole } from "@/lib/mfaPolicy";
+import { canEnrollMfaForRole, isMfaMandatoryForRole, type SecurityAccountRole } from "@/lib/mfaPolicy";
 
 type TotpFactor = {
   id: string;
@@ -124,6 +124,7 @@ const AccountSecurityPanel = ({
   const confirmedEmail = useMemo(() => emailIsConfirmed(user), [user]);
   const hasMfa = verifiedFactors.length > 0;
   const canEnrollMfa = canEnrollMfaForRole(role);
+  const mfaMandatory = isMfaMandatoryForRole(role);
   const showMfaManagement = canEnrollMfa || hasMfa;
 
   const refreshFactors = async () => {
@@ -301,6 +302,12 @@ const AccountSecurityPanel = ({
                   : "Activez Google Authenticator, Microsoft Authenticator ou Authy pour demander un code à chaque connexion."}
               </p>
 
+              {mfaMandatory && (
+                <p className="mt-2 text-xs font-medium leading-5 text-primary">
+                  Obligatoire pour les comptes entreprise avant l'accès aux outils de recrutement et aux documents candidats.
+                </p>
+              )}
+
               {hasMfa ? (
                 <div className="mt-4 space-y-2">
                   {verifiedFactors.map((factor) => (
@@ -309,7 +316,7 @@ const AccountSecurityPanel = ({
                         <CheckCircle className="h-4 w-4 text-emerald-600" />
                         {factor.friendly_name || "Application d'authentification"}
                       </span>
-                      <Button variant="outline" size="sm" onClick={() => removeFactor(factor.id)} disabled={loadingFactors}>
+                      <Button variant="outline" size="sm" onClick={() => removeFactor(factor.id)} disabled={loadingFactors || mfaMandatory} title={mfaMandatory ? "Cette protection est obligatoire pour les comptes entreprise." : undefined}>
                         <Trash2 className="mr-2 h-4 w-4" />
                         Désactiver
                       </Button>

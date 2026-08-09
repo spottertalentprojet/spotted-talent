@@ -3,11 +3,12 @@ import { useNavigate } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import ConfirmActionDialog from "@/components/ConfirmActionDialog";
-import { Sparkles, Users, Building2, Target, FileText, Trash2, LogOut, BarChart3, Lock, Mail } from "lucide-react";
+import { Sparkles, Users, Building2, Target, FileText, LogOut, BarChart3, Lock, Mail, ShieldAlert, Ban, CheckCircle, RotateCcw } from "lucide-react";
 import { toast } from "sonner";
+import { translateAuthError } from "@/lib/authMessages";
 import { formatStoredMessageText } from "@/lib/utils";
 import AccountSecurityPanel from "@/components/AccountSecurityPanel";
+import PlatformSecurityAdminPanel from "@/components/PlatformSecurityAdminPanel";
 import type { User } from "@supabase/supabase-js";
 
 const ADMIN_EMAIL = "contact@spottedtalent.fr";
@@ -19,12 +20,16 @@ const Admin = () => {
   const [adminUser, setAdminUser] = useState<User | null>(null);
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
+  const [showForgotPassword, setShowForgotPassword] = useState(false);
   const [loginLoading, setLoginLoading] = useState(false);
   const [activeTab, setActiveTab] = useState("stats");
   const [stats, setStats] = useState({ talents: 0, entreprises: 0, offres: 0, candidatures: 0, messages: 0 });
   const [talents, setTalents] = useState<any[]>([]);
   const [entreprises, setEntreprises] = useState<any[]>([]);
   const [offres, setOffres] = useState<any[]>([]);
+  const [offerReports, setOfferReports] = useState<any[]>([]);
+  const [moderationReasons, setModerationReasons] = useState<Record<string, string>>({});
+  const [moderatingReportId, setModeratingReportId] = useState<string | null>(null);
 
   useEffect(() => {
     const verifierAdmin = async () => {
@@ -60,6 +65,35 @@ const Admin = () => {
     }
   };
 
+  const reinitialiserMotDePasse = async (e: React.FormEvent) => {
+    e.preventDefault();
+
+    if (email.trim().toLowerCase() !== ADMIN_EMAIL) {
+      toast.error("Saisissez l'adresse administrateur autorisée.");
+      return;
+    }
+
+    setLoginLoading(true);
+    try {
+      const isLocalhost = ["localhost", "127.0.0.1"].includes(window.location.hostname);
+      const baseUrl = isLocalhost
+        ? window.location.origin
+        : (import.meta.env.VITE_SITE_URL || "https://www.spottedtalent.fr");
+
+      const { error } = await supabase.auth.resetPasswordForEmail(ADMIN_EMAIL, {
+        redirectTo: `${baseUrl.replace(/\/$/, "")}/reset-password?role=admin`,
+      });
+      if (error) throw error;
+
+      toast.success("Lien de réinitialisation envoyé. Vérifiez aussi les courriers indésirables.");
+      setShowForgotPassword(false);
+    } catch (err: any) {
+      toast.error(translateAuthError(err?.message));
+    } finally {
+      setLoginLoading(false);
+    }
+  };
+
   const chargerTout = async () => {
     const { data: profiles } = await supabase.from("profiles").select("*");
     const ts = profiles?.filter((p: any) => p.role === "talent") || [];
@@ -68,6 +102,12 @@ const Admin = () => {
     setEntreprises(es);
     const { data: offresData } = await supabase.from("offres").select("*").order("created_at", { ascending: false });
     setOffres(offresData || []);
+    const { data: reportsData, error: reportsError } = await supabase
+      .from("offer_reports")
+      .select("*, offer:offer_id(id,titre,entreprise_id,statut,moderation_status,public_reference,moderation_reason)")
+      .order("created_at", { ascending: false });
+    if (reportsError) console.error("offer_reports_admin_load_error", reportsError);
+    setOfferReports(reportsData || []);
     const { count: nbCands } = await supabase.from("candidatures").select("*", { count: "exact", head: true });
     const { count: nbMsgs } = await supabase.from("messages").select("*", { count: "exact", head: true });
     setStats({
@@ -79,17 +119,26 @@ const Admin = () => {
     });
   };
 
-  const supprimerOffre = async (id: string) => {
-    await supabase.from("offres").delete().eq("id", id);
-    toast.success("Offre supprimée");
-    chargerTout();
-  };
-
-  const toggleOffre = async (id: string, statut: string) => {
-    const newStatut = statut === "active" ? "inactive" : "active";
-    await supabase.from("offres").update({ statut: newStatut }).eq("id", id);
-    toast.success(newStatut === "active" ? "Offre activee" : "Offre desactivee");
-    chargerTout();
+  const decideOfferReport = async (report: any, decision: "suspend" | "dismiss" | "reinstate") => {
+    const reason = String(moderationReasons[report.id] || "").trim();
+    if (reason.length < 10) {
+      toast.error("Expliquez la décision en au moins 10 caractères.");
+      return;
+    }
+    setModeratingReportId(report.id);
+    const { error } = await supabase.rpc("admin_decide_offer_report", {
+      p_report_id: report.id,
+      p_decision: decision,
+      p_reason: reason,
+    });
+    setModeratingReportId(null);
+    if (error) {
+      toast.error(translateAuthError(error.message));
+      return;
+    }
+    toast.success(decision === "suspend" ? "Offre suspendue et décision journalisée." : decision === "reinstate" ? "Offre rétablie et décision journalisée." : "Signalement classé avec motif.");
+    setModerationReasons((current) => ({ ...current, [report.id]: "" }));
+    await chargerTout();
   };
 
   if (loading) return (
@@ -106,23 +155,42 @@ const Admin = () => {
             <Sparkles className="h-8 w-8 text-primary" />
             <span className="gradient-text text-2xl font-bold">Spotted Talent</span>
           </div>
-          <h1 className="text-xl font-bold">Espace Administration</h1>
-          <p className="text-muted-foreground text-sm mt-2">Accès réservé au personnel autorisé</p>
+          <h1 className="text-xl font-bold">
+            {showForgotPassword ? "Réinitialiser le mot de passe" : "Espace Administration"}
+          </h1>
+          <p className="text-muted-foreground text-sm mt-2">
+            {showForgotPassword
+              ? "Recevez un lien sécurisé sur l'adresse administrateur."
+              : "Accès réservé au personnel autorisé"}
+          </p>
         </div>
-        <form onSubmit={seConnecter} className="glass-card p-8 space-y-4">
+        <form onSubmit={showForgotPassword ? reinitialiserMotDePasse : seConnecter} className="glass-card p-8 space-y-4">
           <div className="relative">
             <Mail className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
             <Input type="email" placeholder="Email admin" value={email} onChange={(e) => setEmail(e.target.value)}
               className="pl-10 bg-secondary border-border" required />
           </div>
-          <div className="relative">
-            <Lock className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
-            <Input type="password" placeholder="Mot de passe" value={password} onChange={(e) => setPassword(e.target.value)}
-              className="pl-10 bg-secondary border-border" required />
-          </div>
+          {!showForgotPassword && (
+            <div className="relative">
+              <Lock className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
+              <Input type="password" placeholder="Mot de passe" value={password} onChange={(e) => setPassword(e.target.value)}
+                className="pl-10 bg-secondary border-border" required />
+            </div>
+          )}
           <Button variant="glow" className="w-full" disabled={loginLoading}>
-            {loginLoading ? "Connexion..." : "Se connecter"}
+            {loginLoading
+              ? showForgotPassword ? "Envoi en cours..." : "Connexion..."
+              : showForgotPassword
+                ? "Recevoir le lien de réinitialisation"
+                : "Se connecter"}
           </Button>
+          <button
+            type="button"
+            onClick={() => setShowForgotPassword((current) => !current)}
+            className="w-full text-sm text-muted-foreground transition-colors hover:text-foreground"
+          >
+            {showForgotPassword ? "Retour à la connexion" : "Mot de passe oublié ?"}
+          </button>
         </form>
       </div>
     </div>
@@ -133,6 +201,7 @@ const Admin = () => {
     { id: "talents", label: `Talents (${stats.talents})`, icon: Users },
     { id: "entreprises", label: `Entreprises (${stats.entreprises})`, icon: Building2 },
     { id: "offres", label: `Offres (${stats.offres})`, icon: Target },
+    { id: "moderation", label: `Modération (${offerReports.filter((report) => ["pending", "under_review"].includes(report.status)).length})`, icon: ShieldAlert },
     { id: "security", label: "Sécurité", icon: Lock },
   ];
 
@@ -288,19 +357,9 @@ const Admin = () => {
                       <p className="text-xs text-muted-foreground">{formatStoredMessageText(o.localisation) || "Non précisé"} - {formatStoredMessageText(o.contrat)}</p>
                       <p className="text-xs text-muted-foreground mt-1">{new Date(o.created_at).toLocaleDateString("fr-FR")}</p>
                     </div>
-                    <div className="flex gap-2">
-                      <Button variant="ghost-glow" size="sm" onClick={() => toggleOffre(o.id, o.statut)}>
-                        {o.statut === "active" ? "Désactiver" : "Activer"}
-                      </Button>
-                      <ConfirmActionDialog
-                        title="Supprimer cette offre ?"
-                        description="Cette offre sera retirée de la plateforme. Vous pouvez encore changer d'avis maintenant, mais pas après validation."
-                        onConfirm={() => supprimerOffre(o.id)}
-                      >
-                        <button className="text-red-400 hover:text-red-300 p-2">
-                          <Trash2 className="w-4 h-4" />
-                        </button>
-                      </ConfirmActionDialog>
+                    <div className="text-right text-xs text-muted-foreground">
+                      <p>{o.public_reference || "Référence en préparation"}</p>
+                      <p className="mt-1">Modération : {o.moderation_status === "suspended" ? "Suspendue" : "Publiée"}</p>
                     </div>
                   </div>
                 </div>
@@ -309,11 +368,71 @@ const Admin = () => {
           </div>
         )}
 
+        {activeTab === "moderation" && (
+          <div>
+            <div className="mb-6">
+              <h2 className="text-2xl font-bold">Signalements et décisions</h2>
+              <p className="mt-2 max-w-3xl text-sm leading-6 text-muted-foreground">Chaque signalement est examiné humainement. Une annonce n’est jamais retirée sur le seul déclenchement d’un signalement et chaque décision exige un motif conservé dans le journal.</p>
+            </div>
+            {offerReports.length === 0 ? (
+              <div className="glass-card p-10 text-center"><CheckCircle className="mx-auto h-10 w-10 text-emerald-500" /><p className="mt-3 font-semibold">Aucun signalement</p><p className="mt-1 text-sm text-muted-foreground">La file de modération est vide.</p></div>
+            ) : (
+              <div className="space-y-4">
+                {offerReports.map((report: any) => {
+                  const company = entreprises.find((entry) => entry.user_id === report.offer?.entreprise_id);
+                  const reasonLabels: Record<string, string> = {
+                    discrimination: "Contenu discriminatoire",
+                    misleading: "Offre trompeuse ou fictive",
+                    paid_application: "Candidature payante ou redirection abusive",
+                    fraud: "Fraude ou usurpation",
+                    expired: "Offre expirée ou déjà pourvue",
+                    other: "Autre motif",
+                  };
+                  const isOpen = ["pending", "under_review"].includes(report.status);
+                  const isSuspended = report.offer?.moderation_status === "suspended";
+                  return (
+                    <div key={report.id} className="glass-card p-5">
+                      <div className="flex flex-col gap-4 xl:flex-row xl:items-start xl:justify-between">
+                        <div className="min-w-0">
+                          <div className="flex flex-wrap items-center gap-2">
+                            <h3 className="font-semibold">{formatStoredMessageText(report.offer?.titre) || "Offre indisponible"}</h3>
+                            <span className={`rounded-full border px-2 py-0.5 text-xs ${isOpen ? "border-amber-500/30 bg-amber-500/10 text-amber-500" : "border-border bg-secondary text-muted-foreground"}`}>{isOpen ? "À examiner" : report.status === "dismissed" ? "Classé" : "Traité"}</span>
+                            {isSuspended && <span className="rounded-full border border-red-500/30 bg-red-500/10 px-2 py-0.5 text-xs text-red-400">Suspendue</span>}
+                          </div>
+                          <p className="mt-2 text-sm text-muted-foreground">{company?.company_name || company?.full_name || "Entreprise"} · {report.offer?.public_reference || "Sans référence"}</p>
+                          <p className="mt-3 text-sm font-semibold">{reasonLabels[report.reason] || report.reason}</p>
+                          {report.details && <p className="mt-1 max-w-3xl whitespace-pre-wrap text-sm leading-6 text-muted-foreground">{formatStoredMessageText(report.details)}</p>}
+                          <p className="mt-2 text-xs text-muted-foreground">Signalé le {new Date(report.created_at).toLocaleString("fr-FR")}</p>
+                          {report.decision_reason && <div className="mt-3 rounded-lg border border-border/60 bg-secondary/40 p-3 text-sm"><strong>Décision motivée :</strong> {formatStoredMessageText(report.decision_reason)}</div>}
+                        </div>
+                        <div className="w-full shrink-0 xl:w-96">
+                          <label className="text-xs font-semibold text-muted-foreground">Motif obligatoire de la décision</label>
+                          <textarea value={moderationReasons[report.id] || ""} onChange={(event) => setModerationReasons((current) => ({ ...current, [report.id]: event.target.value }))} rows={3} maxLength={1500} className="mt-2 w-full resize-none rounded-xl border border-border bg-secondary/40 px-3 py-2 text-sm outline-none focus:border-primary/50" placeholder="Constats vérifiés, décision et possibilité de contestation..." />
+                          <div className="mt-2 grid gap-2 sm:grid-cols-2">
+                            {isOpen && <Button size="sm" variant="ghost-glow" disabled={moderatingReportId === report.id} onClick={() => void decideOfferReport(report, "dismiss")}><CheckCircle className="mr-1.5 h-4 w-4" /> Classer</Button>}
+                            {isOpen && !isSuspended && <Button size="sm" className="border-red-500/30 bg-red-500/10 text-red-500 hover:bg-red-500/20" disabled={moderatingReportId === report.id} onClick={() => void decideOfferReport(report, "suspend")}><Ban className="mr-1.5 h-4 w-4" /> Suspendre</Button>}
+                            {isSuspended && <Button size="sm" variant="ghost-glow" className="sm:col-span-2" disabled={moderatingReportId === report.id} onClick={() => void decideOfferReport(report, "reinstate")}><RotateCcw className="mr-1.5 h-4 w-4" /> Rétablir après vérification</Button>}
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+          </div>
+        )}
+
         {activeTab === "security" && adminUser && (
           <div>
-            <h1 className="mb-2 text-3xl font-bold">Sécurité du compte administrateur</h1>
+            <h1 className="mb-2 text-3xl font-bold">Sécurité de la plateforme</h1>
             <p className="mb-8 text-muted-foreground">
-              Activez une application d’authentification pour protéger l’accès aux données de la plateforme.
+              Surveillez les incidents, verrouillez les accès sensibles et protégez le compte administrateur.
+            </p>
+            <PlatformSecurityAdminPanel />
+            <h2 className="mb-2 text-2xl font-bold">Sécurité du compte administrateur</h2>
+            <p className="mb-5 text-muted-foreground">
+              La double authentification est obligatoire pour activer ou désactiver le mode incident.
             </p>
             <AccountSecurityPanel user={adminUser} role="admin" />
           </div>

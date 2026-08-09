@@ -28,6 +28,7 @@ const ALLOWED_RETURN_ORIGINS = new Set([
 ]);
 
 const getSiteUrl = () => Deno.env.get("SITE_URL") || "https://www.spottedtalent.fr";
+const CURRENT_SALES_TERMS_VERSION = "2026-08-09";
 
 const safeReturnUrl = (value: unknown, fallbackPath: string) => {
   const fallback = new URL(fallbackPath, getSiteUrl()).toString();
@@ -92,6 +93,7 @@ type CheckoutBody = {
     city?: string;
     country?: string;
   };
+  salesTermsVersion?: string;
   successUrl?: string;
   cancelUrl?: string;
 };
@@ -139,6 +141,10 @@ serve(async (req) => {
   const planId = body.planId;
   const billingCycle = body.billingCycle;
   const addons: string[] = [];
+
+  if (body.salesTermsVersion !== CURRENT_SALES_TERMS_VERSION) {
+    return jsonResponse(400, { error: "sales_terms_acceptance_required" });
+  }
 
   if (!planId || !PLAN_PRICE_KEYS[planId]) {
     return jsonResponse(400, { error: "invalid_plan_id" });
@@ -202,6 +208,13 @@ serve(async (req) => {
 
   if (existingAccountError) {
     return jsonResponse(500, { error: "billing_account_lookup_failed" });
+  }
+
+  if (!existingAccount?.siret_verified_at || !existingAccount.siret) {
+    return jsonResponse(422, {
+      error: "company_verification_required",
+      message: "Vérifiez le SIRET de l'entreprise avant d'ouvrir le paiement sécurisé.",
+    });
   }
 
   if (
@@ -270,6 +283,7 @@ serve(async (req) => {
     billing_email: billingProfile.billingEmail || user.email || "",
     vat_number: billingProfile.vatNumber || "",
     siret: verifiedSiret,
+    sales_terms_version: CURRENT_SALES_TERMS_VERSION,
   };
   const shouldStartTrial =
     (existingAccount?.subscription_status || "trial") === "trial" &&
@@ -351,6 +365,8 @@ serve(async (req) => {
     billing_cycle: billingCycle,
     addon_ids: addons,
     amount_ttc_cents: session.amount_total ?? null,
+    cgv_version: CURRENT_SALES_TERMS_VERSION,
+    cgv_accepted_at: new Date().toISOString(),
     status: "pending",
   });
 

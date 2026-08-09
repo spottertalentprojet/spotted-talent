@@ -7,6 +7,11 @@ import { Input } from "@/components/ui/input";
 import { ArrowLeft, Lock, Mail, Phone, Sparkles, User as UserIcon } from "lucide-react";
 import { toast } from "sonner";
 import { translateAuthError } from "@/lib/authMessages";
+import LegalAcknowledgementFields from "@/components/LegalAcknowledgementFields";
+import {
+  getLegalSignupMetadata,
+  rememberPendingLegalAcknowledgement,
+} from "@/lib/legal";
 
 const getAuthRedirectUrl = (path: string) => {
   const isLocalhost = ["localhost", "127.0.0.1"].includes(window.location.hostname);
@@ -32,6 +37,8 @@ const TalentAuth = () => {
   const [password, setPassword] = useState("");
   const [fullName, setFullName] = useState("");
   const [telephone, setTelephone] = useState("");
+  const [termsAccepted, setTermsAccepted] = useState(false);
+  const [privacyAcknowledged, setPrivacyAcknowledged] = useState(false);
   const [loading, setLoading] = useState(false);
   const { user, profile, loading: authLoading, signOut } = useAuth();
   const navigate = useNavigate();
@@ -79,6 +86,12 @@ const TalentAuth = () => {
         toast.success("Connexion réussie !");
         navigate("/talent/dashboard");
       } else {
+        if (!termsAccepted || !privacyAcknowledged) {
+          toast.error("Acceptez les CGU et confirmez la lecture de la politique de confidentialité.");
+          setLoading(false);
+          return;
+        }
+
         const phoneDigits = telephone.replace(/\D/g, "");
         if (phoneDigits.length < 10 || phoneDigits.length > 15) {
           toast.error("Le numero de telephone doit contenir entre 10 et 15 chiffres.");
@@ -98,7 +111,12 @@ const TalentAuth = () => {
           email,
           password,
           options: {
-            data: { role: "talent", full_name: fullName, telephone: telephone.trim() },
+            data: {
+              role: "talent",
+              full_name: fullName,
+              telephone: telephone.trim(),
+              ...getLegalSignupMetadata("talent_email_signup"),
+            },
             emailRedirectTo: getAuthRedirectUrl("/auth-confirmed/talent"),
           },
         });
@@ -176,9 +194,17 @@ const TalentAuth = () => {
   };
 
   const handleGoogleLogin = async () => {
+    if (!isLogin && (!termsAccepted || !privacyAcknowledged)) {
+      toast.error("Acceptez les CGU et confirmez la lecture de la politique de confidentialité.");
+      return;
+    }
+
     setLoading(true);
 
     try {
+      if (!isLogin) {
+        rememberPendingLegalAcknowledgement("talent_google_signup");
+      }
       sessionStorage.setItem("spottedtalent_reactivate_login", "1");
       const { error } = await supabase.auth.signInWithOAuth({
         provider: "google",
@@ -326,7 +352,21 @@ const TalentAuth = () => {
                 </div>
               )}
 
-              <Button variant="glow" className="w-full" disabled={loading}>
+              {!isLogin && (
+                <LegalAcknowledgementFields
+                  termsAccepted={termsAccepted}
+                  privacyAcknowledged={privacyAcknowledged}
+                  onTermsAcceptedChange={setTermsAccepted}
+                  onPrivacyAcknowledgedChange={setPrivacyAcknowledged}
+                  disabled={loading}
+                />
+              )}
+
+              <Button
+                variant="glow"
+                className="w-full"
+                disabled={loading || (!isLogin && (!termsAccepted || !privacyAcknowledged))}
+              >
                 {loading ? "Chargement..." : isLogin ? "Se connecter" : "Créer mon compte"}
               </Button>
 
@@ -341,15 +381,6 @@ const TalentAuth = () => {
                 </button>
               )}
 
-              {!isLogin && (
-                <p className="text-center text-xs text-muted-foreground">
-                  En créant un compte, vous acceptez nos{" "}
-                  <a href="/cgu" className="text-primary hover:underline">CGU</a>{" "}
-                  et notre{" "}
-                  <a href="/confidentialite" className="text-primary hover:underline">politique de confidentialité</a>.
-                </p>
-              )}
-
               <div className="relative py-2">
                 <div className="absolute inset-0 flex items-center">
                   <span className="w-full border-t border-border/70" />
@@ -359,7 +390,13 @@ const TalentAuth = () => {
                 </div>
               </div>
 
-              <Button type="button" variant="ghost-glow" className="w-full" onClick={handleGoogleLogin} disabled={loading}>
+              <Button
+                type="button"
+                variant="ghost-glow"
+                className="w-full"
+                onClick={handleGoogleLogin}
+                disabled={loading || (!isLogin && (!termsAccepted || !privacyAcknowledged))}
+              >
                 <GoogleLogo />
                 Continuer avec Google
               </Button>

@@ -5,9 +5,9 @@ import { Button } from "@/components/ui/button";
 import heroMockup from "@/assets/hero-mockup-premium-v3.png";
 
 const trustStats = [
-  { value: "5 000+", label: "CV optimisés" },
-  { value: "1 000+", label: "utilisateurs actifs" },
-  { value: "98%", label: "satisfaction" },
+  { value: "Gratuit", label: "pour les talents" },
+  { value: "Modifiable", label: "CV et lettre" },
+  { value: "Privé", label: "documents contrôlés" },
 ];
 
 const HeroSection = () => {
@@ -53,11 +53,10 @@ const HeroSection = () => {
           <div className="mt-8 rounded-[26px] border border-border/60 bg-card/55 px-5 py-5 shadow-[0_24px_60px_-44px_hsl(var(--foreground)/0.28)] backdrop-blur sm:mt-10 sm:px-6">
             <div className="flex flex-col gap-5">
               <div>
-                <p className="text-xs font-semibold uppercase tracking-[0.24em] text-primary">Ils nous font confiance</p>
+                <p className="text-xs font-semibold uppercase tracking-[0.24em] text-primary">Une candidature mieux préparée</p>
                 <p className="mt-2 text-sm leading-relaxed text-foreground/90">
-                  &quot;Mon CV a été clarifié en quelques secondes et j&apos;ai mieux compris comment me présenter.&quot;
+                  Analyse ton CV, adapte ta lettre à l’offre choisie et garde toujours la main sur le texte final.
                 </p>
-                <p className="mt-2 text-xs font-medium text-muted-foreground">Sophie M. · Candidate</p>
               </div>
 
               <div className="flex flex-wrap gap-2">

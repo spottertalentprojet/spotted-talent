@@ -1,4 +1,7 @@
 import { supabase } from "@/integrations/supabase/client";
+import type { Json } from "@/integrations/supabase/types";
+import { assertDocumentsAvailable } from "@/lib/platformSecurity";
+import { getInitialDocumentExpiry } from "@/lib/documentRetention";
 
 export type DocumentAccessAction =
   | "upload"
@@ -7,12 +10,14 @@ export type DocumentAccessAction =
   | "delete"
   | "request_created"
   | "request_deleted"
-  | "retention_deleted";
+  | "retention_deleted"
+  | "receipt_confirmed"
+  | "document_supprimé";
 
 type DocumentAccessOptions = {
   fileName?: string | null;
   documentRequestId?: string | null;
-  metadata?: Record<string, unknown>;
+  metadata?: Record<string, Json | undefined>;
 };
 
 type UploadPrivateDocumentOptions = DocumentAccessOptions & {
@@ -26,6 +31,16 @@ type EncryptedDocumentPayload = {
 };
 
 const ENCRYPTED_DOCUMENT_CONTENT_TYPE = "application/octet-stream";
+
+const isMissingRetentionRpc = (error: { code?: string; message?: string } | null) =>
+  Boolean(
+    error
+      && (
+        error.code === "PGRST202"
+        || error.message?.includes("schema cache")
+        || error.message?.includes("Could not find the function")
+      ),
+  );
 
 function bytesToBase64(bytes: Uint8Array): string {
   let binary = "";
@@ -103,6 +118,7 @@ export async function uploadPrivateDocument(
   file: File,
   options: UploadPrivateDocumentOptions = {},
 ) {
+  await assertDocumentsAvailable();
   const encrypted = await encryptDocumentFile(file);
   const encryptedBlob = new Blob([encrypted.encryptedBytes], { type: ENCRYPTED_DOCUMENT_CONTENT_TYPE });
   const { ownerId, category, relationId, documentRequestId } = getDocumentPathParts(storagePath);
@@ -113,8 +129,9 @@ export async function uploadPrivateDocument(
 
   if (uploadError) throw uploadError;
 
-  const expiresAt = new Date();
-  expiresAt.setDate(expiresAt.getDate() + (options.expiresInDays ?? 30));
+  const expiresAt = options.expiresInDays
+    ? new Date(Date.now() + options.expiresInDays * 24 * 60 * 60 * 1000)
+    : getInitialDocumentExpiry(category);
 
   const { error: metadataError } = await supabase.from("document_encryption_keys").insert({
     storage_path: storagePath,
@@ -149,15 +166,56 @@ export async function uploadPrivateDocument(
 }
 
 export async function deletePrivateDocument(storagePath: string, options: DocumentAccessOptions = {}) {
-  await supabase.from("document_encryption_keys").delete().eq("storage_path", storagePath);
-
+  await assertDocumentsAvailable();
   const { error } = await supabase.storage.from("documents").remove([storagePath]);
   if (error) throw error;
 
-  void logDocumentAccess("delete", storagePath, options);
+  const { error: retentionError } = await supabase.rpc("record_manual_document_deletion", {
+    p_storage_path: storagePath,
+  });
+
+  if (retentionError) {
+    if (!isMissingRetentionRpc(retentionError)) throw retentionError;
+    await supabase.from("document_encryption_keys").delete().eq("storage_path", storagePath);
+    void logDocumentAccess("delete", storagePath, options);
+  }
+}
+
+export async function confirmDocumentReceipt(storagePath: string) {
+  await assertDocumentsAvailable();
+  const { data, error } = await supabase.rpc("record_document_receipt", {
+    p_storage_path: storagePath,
+    p_receipt_method: "confirmation",
+  });
+
+  if (error) throw error;
+  if (!data) throw new Error("Ce document ne peut pas être confirmé comme reçu.");
+  return data;
+}
+
+async function recordSuccessfulDocumentDownload(
+  storagePath: string,
+  options: DocumentAccessOptions,
+  fileName?: string | null,
+) {
+  const { data, error } = await supabase.rpc("record_document_receipt", {
+    p_storage_path: storagePath,
+    p_receipt_method: "download",
+  });
+
+  if (error && !isMissingRetentionRpc(error)) throw error;
+
+  if (!data) {
+    await logDocumentAccess("open", storagePath, {
+      ...options,
+      fileName: options.fileName || fileName,
+      metadata: { encrypted: true, ...(options.metadata || {}) },
+    });
+  }
 }
 
 export async function openPrivateDocument(storagePath: string, options: DocumentAccessOptions = {}) {
+  await assertDocumentsAvailable();
   const { data: encryptionMetadata, error: metadataError } = await supabase
     .from("document_encryption_keys")
     .select("original_file_name, original_mime_type, iv_b64, key_b64")
@@ -187,17 +245,17 @@ export async function openPrivateDocument(storagePath: string, options: Document
     const decryptedBlob = new Blob([decryptedBytes], {
       type: encryptionMetadata.original_mime_type || "application/octet-stream",
     });
+    await recordSuccessfulDocumentDownload(
+      storagePath,
+      options,
+      encryptionMetadata.original_file_name,
+    );
     const objectUrl = URL.createObjectURL(decryptedBlob);
     window.open(objectUrl, "_blank", "noopener,noreferrer");
     window.setTimeout(() => URL.revokeObjectURL(objectUrl), 60_000);
-    void logDocumentAccess("open", storagePath, {
-      ...options,
-      fileName: options.fileName || encryptionMetadata.original_file_name,
-      metadata: { encrypted: true, ...(options.metadata || {}) },
-    });
     return;
   }
 
+  await recordSuccessfulDocumentDownload(storagePath, options, options.fileName);
   window.open(data.signedUrl, "_blank", "noopener,noreferrer");
-  void logDocumentAccess("open", storagePath, options);
 }

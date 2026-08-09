@@ -6,7 +6,7 @@ const getFileExtension = (fileName: string) =>
 
 const normalizeExtractedText = (value: string) =>
   value
-    .replaceAll("\0", " ")
+    .replace(/\0/g, " ")
     .replace(/[ \t]+/g, " ")
     .replace(/\n{3,}/g, "\n\n")
     .trim();

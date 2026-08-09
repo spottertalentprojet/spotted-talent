@@ -38,8 +38,13 @@ import {
   ShieldCheck,
   Eye,
   RefreshCw,
+  Flag,
   type LucideIcon,
 } from "lucide-react";
+import {
+  TALENT_RECEIVED_DOCUMENT_RETENTION_MESSAGE,
+  TALENT_REQUEST_RETENTION_MESSAGE,
+} from "@/lib/documentRetention";
 import { useEffect, useState, useRef, type ReactNode } from "react";
 import { toast } from "sonner";
 import { supabase } from "@/integrations/supabase/client";
@@ -48,8 +53,10 @@ import { requestAiContent } from "@/lib/aiAssistant";
 import { extractCvTextFromFile } from "@/lib/cvTextExtraction";
 import { translateAppError } from "@/lib/authMessages";
 import { getCompanyCoverPublicUrl } from "@/lib/companyMedia";
+import { PROFILE_IMAGE_ACCEPT_ATTRIBUTE, uploadProfileImage } from "@/lib/profileMedia";
 import { REQUESTABLE_DOCUMENTS, getRequestStatusMeta } from "@/lib/documentRequests";
 import { canTalentReplyToExchange, isCandidateExchangeClosed } from "@/lib/candidateExchange";
+import { buildSupportMailto } from "@/lib/contact";
 import {
   TALENT_AVAILABILITY_OPTIONS,
   buildTalentBioWithAvailability,
@@ -812,6 +819,13 @@ const formatSalaireRange = (min?: number | null, max?: number | null): string =>
   return "Non précisé";
 };
 
+const formatSalaryPeriod = (period?: string | null): string => ({
+  hourly: "par heure",
+  daily: "par jour",
+  monthly: "par mois",
+  annual: "par an",
+}[period || ""] || "");
+
 const getEntrepriseDisplayName = (source: any): string => {
   const profile = source?.entrepriseProfile || source?.entreprise_profile || source?.entreprise || null;
   const name = (
@@ -1103,6 +1117,13 @@ const TalentDashboard = () => {
           ))}
         </nav>
         <div className="border-t border-border/70 p-3">
+          <a
+            href={buildSupportMailto(`Support Talent - ${profile?.full_name || user?.email || "Compte Talent"}`)}
+            className="dashboard-nav-item mb-2"
+          >
+            <Mail className="h-4 w-4" />
+            <span>Contacter le support</span>
+          </a>
           <div className="mb-2 hidden items-center justify-between rounded-xl border border-border/60 bg-background/70 px-3 py-2 lg:flex">
             <span className="text-xs font-medium text-muted-foreground">Apparence</span>
             <ThemeToggle className="border-0 bg-transparent p-0 shadow-none [&_button]:h-7 [&_button]:w-7" />
@@ -1787,7 +1808,18 @@ const ProfileTab = ({ profile, user, avatarUrl, setAvatarUrl }: any) => {
               </div>
                 <label className="absolute -bottom-2 -right-2 flex h-9 w-9 cursor-pointer items-center justify-center rounded-2xl border-2 border-background bg-primary text-white shadow-lg transition-colors hover:bg-primary/85">
                   <Camera className="h-4 w-4" />
-                  <input type="file" accept="image/*" className="hidden" onChange={async (e) => { const file = e.target.files?.[0]; if (!file || !user) return; const ext = file.name.split(".").pop(); const path = `${user.id}/avatar.${ext}`; const { error } = await supabase.storage.from("avatars").upload(path, file, { upsert: true }); if (!error) { const { data } = supabase.storage.from("avatars").getPublicUrl(path); setAvatarUrl(data.publicUrl + "?t=" + Date.now()); toast.success("Photo mise à jour !"); } }} />
+                  <input type="file" accept={PROFILE_IMAGE_ACCEPT_ATTRIBUTE} className="hidden" onChange={async (event) => {
+                    const file = event.target.files?.[0];
+                    if (!file || !user) return;
+                    try {
+                      setAvatarUrl(await uploadProfileImage(user.id, file));
+                      toast.success("Photo mise à jour !");
+                    } catch (error) {
+                      toast.error(translateAppError(error instanceof Error ? error.message : "", "Impossible d'ajouter cette photo."));
+                    } finally {
+                      event.target.value = "";
+                    }
+                  }} />
               </label>
             </div>
               <div className="min-w-0 flex-1">
@@ -2851,7 +2883,11 @@ const OffresTab = ({ user, savedOnly = false }: any) => {
   const [profilTalent, setProfilTalent] = useState<any>(null);
   const [applicationOffer, setApplicationOffer] = useState<any | null>(null);
   const [screeningAnswers, setScreeningAnswers] = useState<Record<string, string>>({});
-  const contrats = ["Tous", "CDI", "CDI Cadre", "CDD", "CDD - Court terme (jusqu'à 3 mois)", "CDD - Court terme (jusqu'à 6 mois)", "CDD Renouvelable", "Intérim", "Freelance", "Stage", "Alternance", "Contrat de professionnalisation", "Contrat étudiant", "Service civique", "Intermittent"];
+  const [reportOffer, setReportOffer] = useState<any | null>(null);
+  const [reportReason, setReportReason] = useState("");
+  const [reportDetails, setReportDetails] = useState("");
+  const [reporting, setReporting] = useState(false);
+  const contrats = ["Tous", "CDI", "CDD", "Intérim", "Alternance", "Stage"];
   const diplomes = ["Tous", "Sans diplôme", "CAP", "BEP", "Bac Pro", "BTS", "Licence", "Master", "Doctorat"];
 
   useEffect(() => {
@@ -3025,6 +3061,31 @@ const OffresTab = ({ user, savedOnly = false }: any) => {
     void postuler(applicationOffer.id, responses);
   };
 
+  const signalerOffre = async () => {
+    if (!user || !reportOffer || !reportReason || reporting) return;
+    if (reportReason === "other" && reportDetails.trim().length < 10) {
+      toast.error("Précisez le motif du signalement en quelques mots.");
+      return;
+    }
+    setReporting(true);
+    const { error } = await supabase.from("offer_reports").insert({
+      offer_id: reportOffer.id,
+      reporter_id: user.id,
+      reason: reportReason,
+      details: reportDetails.trim() || null,
+    });
+    setReporting(false);
+    if (error) {
+      if (error.code === "23505") toast.info("Vous avez déjà un signalement en cours pour cette offre.");
+      else toast.error(translateAppError(error.message, "Impossible d’envoyer le signalement."));
+      return;
+    }
+    toast.success("Signalement transmis. L’offre reste visible pendant l’examen.");
+    setReportOffer(null);
+    setReportReason("");
+    setReportDetails("");
+  };
+
   const salaireMinRecherche = filtreSalaireMin ? Number(filtreSalaireMin) : null;
   const salaireMaxRecherche = filtreSalaireMax ? Number(filtreSalaireMax) : null;
   const rechercheNormalisee = normalizeSearchValue(recherche);
@@ -3179,6 +3240,34 @@ const OffresTab = ({ user, savedOnly = false }: any) => {
                 {postulant ? "Envoi..." : "Envoyer ma candidature"}
               </Button>
             </div>
+          </div>
+        </div>
+      )}
+      {reportOffer && (
+        <div className="fixed inset-0 z-[110] flex items-center justify-center bg-black/65 p-4" role="dialog" aria-modal="true" aria-labelledby="offer-report-title">
+          <div className="w-full max-w-lg rounded-2xl border border-border bg-card p-5 shadow-2xl sm:p-6">
+            <div className="flex items-start justify-between gap-4">
+              <div>
+                <p className="text-xs font-semibold uppercase tracking-[0.2em] text-amber-600 dark:text-amber-300">Signalement confidentiel</p>
+                <h3 id="offer-report-title" className="mt-2 text-xl font-bold">Signaler « {reportOffer.titre} »</h3>
+                <p className="mt-2 text-sm leading-6 text-muted-foreground">Un signalement déclenche une vérification humaine. L’annonce n’est pas supprimée automatiquement.</p>
+              </div>
+              <button type="button" onClick={() => setReportOffer(null)} className="inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-xl border border-border text-muted-foreground hover:text-foreground" aria-label="Fermer"><X className="h-4 w-4" /></button>
+            </div>
+            <label className="mt-5 block text-sm font-semibold">Motif *</label>
+            <select value={reportReason} onChange={(event) => setReportReason(event.target.value)} className="mt-2 h-11 w-full rounded-xl border border-border bg-background px-3 text-sm outline-none focus:border-primary/50">
+              <option value="">Choisir un motif</option>
+              <option value="discrimination">Contenu discriminatoire</option>
+              <option value="misleading">Offre trompeuse ou fictive</option>
+              <option value="paid_application">Candidature payante ou redirection abusive</option>
+              <option value="fraud">Fraude ou usurpation</option>
+              <option value="expired">Offre expirée ou déjà pourvue</option>
+              <option value="other">Autre motif</option>
+            </select>
+            <label className="mt-4 block text-sm font-semibold">Détails utiles</label>
+            <textarea value={reportDetails} onChange={(event) => setReportDetails(event.target.value)} maxLength={1500} rows={4} className="mt-2 w-full resize-none rounded-xl border border-border bg-background px-3 py-2 text-sm outline-none focus:border-primary/50" placeholder="Décrivez précisément le problème, sans ajouter de donnée sensible." />
+            <p className="mt-2 text-xs text-muted-foreground">La décision et son motif sont conservés dans le journal de modération. Vous pouvez contester une décision auprès du support.</p>
+            <div className="mt-5 flex flex-col-reverse gap-2 sm:flex-row sm:justify-end"><Button variant="ghost-glow" onClick={() => setReportOffer(null)}>Annuler</Button><Button variant="glow" disabled={!reportReason || reporting} onClick={() => void signalerOffre()}>{reporting ? "Envoi..." : "Envoyer le signalement"}</Button></div>
           </div>
         </div>
       )}
@@ -3539,13 +3628,32 @@ const OffresTab = ({ user, savedOnly = false }: any) => {
                           <p className="mt-1 text-xs font-semibold text-foreground">{formatOfferField(offre.diplome, "Non précisé")}</p>
                         </div>
                         <div className="dashboard-subcard p-3">
-                          <p className="text-[10px] font-semibold uppercase tracking-[0.16em] text-muted-foreground">Salaire brut mensuel</p>
-                          <p className="mt-1 text-xs font-semibold text-foreground">{formatSalaireRange(offre.salaire_min, offre.salaire_max)}</p>
+                          <p className="text-[10px] font-semibold uppercase tracking-[0.16em] text-muted-foreground">Rémunération brute</p>
+                          <p className="mt-1 text-xs font-semibold text-foreground">{formatSalaireRange(offre.salaire_min, offre.salaire_max)} {formatSalaryPeriod(offre.remuneration_periode)}</p>
                         </div>
                         <div className="dashboard-subcard p-3">
                           <p className="text-[10px] font-semibold uppercase tracking-[0.16em] text-muted-foreground">Localisation</p>
                           <p className="mt-1 text-xs font-semibold text-foreground">{formatOfferField(offre.localisation, "Non précisé")}</p>
                         </div>
+                      </div>
+
+                      {(offre.experience_requise || offre.duree_contrat || offre.motif_contrat_temporaire) && (
+                        <div className="mt-3 flex flex-wrap gap-2 text-xs">
+                          {offre.experience_requise && <span className="rounded-full border border-border/60 bg-secondary/50 px-3 py-1.5">Expérience : {formatOfferField(offre.experience_requise)}</span>}
+                          {offre.duree_contrat && <span className="rounded-full border border-border/60 bg-secondary/50 px-3 py-1.5">Durée : {formatOfferField(offre.duree_contrat)}</span>}
+                          {offre.motif_contrat_temporaire && <span className="rounded-full border border-border/60 bg-secondary/50 px-3 py-1.5">Motif : {formatOfferField(offre.motif_contrat_temporaire)}</span>}
+                        </div>
+                      )}
+
+                      <div className="mt-3 flex flex-col gap-2 rounded-xl border border-border/60 bg-background/60 p-3 text-xs text-muted-foreground sm:flex-row sm:items-center sm:justify-between">
+                        <p>
+                          Publié le {new Date(offre.created_at).toLocaleDateString("fr-FR", { day: "2-digit", month: "long", year: "numeric" })}
+                          {offre.updated_at && new Date(offre.updated_at).getTime() > new Date(offre.created_at).getTime() + 60000 ? ` · mis à jour le ${new Date(offre.updated_at).toLocaleDateString("fr-FR", { day: "2-digit", month: "long", year: "numeric" })}` : ""}
+                          {offre.public_reference ? ` · Référence ${offre.public_reference}` : ""}
+                        </p>
+                        <button type="button" onClick={() => { setReportOffer(offre); setReportReason(""); setReportDetails(""); }} className="inline-flex items-center gap-1.5 font-semibold text-muted-foreground transition-colors hover:text-amber-600 dark:hover:text-amber-300">
+                          <Flag className="h-3.5 w-3.5" /> Signaler cette offre
+                        </button>
                       </div>
 
                       <div className="grid gap-3 xl:grid-cols-[minmax(0,1.2fr)_minmax(0,0.8fr)]">
@@ -3582,7 +3690,7 @@ const OffresTab = ({ user, savedOnly = false }: any) => {
                           )}
 
                           {!isApplied && (
-                            <Button variant="glow" className="h-8 w-full text-xs" disabled={postulant} onClick={() => postuler(offre.id)}>
+                            <Button variant="glow" className="h-8 w-full text-xs" disabled={postulant} onClick={() => commencerCandidature(offre)}>
                               Postuler à cette offre
                             </Button>
                           )}
@@ -4310,17 +4418,15 @@ const DocumentsTab = () => {
   const [documentsView, setDocumentsView] = useState<"all" | "requests" | "shared">("all");
   const [showPersonalUpload, setShowPersonalUpload] = useState(false);
   const [personalUploadCategory, setPersonalUploadCategory] = useState("cv");
-  const [showShareUpload, setShowShareUpload] = useState(false);
-  const [shareUploadCategory, setShareUploadCategory] = useState("shared-contrat");
   const documentsIntroStorageKey = user?.id ? `spotted-talent:documents-intro-seen:${user.id}` : "";
   const personalCategories = [
     { id: "cv", label: "Mon CV", icon: FileText, desc: "Visible par le recruteur depuis votre candidature" },
     { id: "lettre", label: "Lettre de motivation", icon: Mail, desc: "Visible par le recruteur depuis votre candidature" },
   ];
   const sharedCategories = [
-    { id: "shared-contrat", label: "Contrats", icon: FolderOpen, desc: "Contrats partagés entre vous et l'entreprise" },
-    { id: "shared-fiche-paie", label: "Fiches de paie", icon: FolderOpen, desc: "Documents de paie partagés uniquement avec l'entreprise concernée" },
-    { id: "shared-interim", label: "Documents d'intérim", icon: FolderOpen, desc: "Pièces liées à votre mission ou à votre suivi d'intérim" },
+    { id: "shared-contrat", label: "Contrats", icon: FolderOpen, desc: "Contrats transmis par l'entreprise pendant 90 jours" },
+    { id: "shared-fiche-paie", label: "Fiches de paie", icon: FolderOpen, desc: "Documents transmis par l'entreprise pendant 90 jours" },
+    { id: "shared-interim", label: "Documents d'intérim", icon: FolderOpen, desc: "Documents transmis par l'entreprise pendant 90 jours" },
   ];
   useEffect(() => {
     if (!user) return;
@@ -4398,19 +4504,38 @@ const DocumentsTab = () => {
         entrepriseNom = profilEntreprise?.company_name || profilEntreprise?.full_name || "Entreprise";
       }
 
+      const { data: retentionRecords, error: retentionRecordsError } = await supabase.rpc(
+        "list_candidature_document_records",
+        { p_candidature_id: candidature.id },
+      );
+      const retentionMetadataAvailable = !retentionRecordsError;
+      if (retentionRecordsError && retentionRecordsError.code !== "PGRST202") {
+        console.error("document_retention_records_select_error", retentionRecordsError);
+      }
+
       const categories = await Promise.all(sharedCategories.map(async (cat) => {
-        const { data: ownDocs } = await supabase.storage.from("documents").list(`${user.id}/${cat.id}/${candidature.id}`);
         let partnerDocs: any[] = [];
 
-        if (candidature.offre?.entreprise_id) {
+        if (retentionMetadataAvailable) {
+          partnerDocs = (retentionRecords || [])
+            .filter((record) => record.retention_flow === "company_to_talent" && record.category === cat.id)
+            .map((record) => ({
+              name: record.original_file_name,
+              ownerId: record.owner_id,
+              sender: "entreprise",
+              storagePath: record.storage_path,
+              retentionRecord: record,
+              created_at: record.sent_at,
+            }));
+        } else if (candidature.offre?.entreprise_id) {
           const { data } = await supabase.storage.from("documents").list(`${candidature.offre.entreprise_id}/${cat.id}/${candidature.id}`);
-          partnerDocs = data || [];
+          partnerDocs = (data || []).map((doc) => ({ ...doc, ownerId: candidature.offre?.entreprise_id, sender: "entreprise" }));
         }
 
         return {
           ...cat,
-          ownDocs: (ownDocs || []).map((doc) => ({ ...doc, ownerId: user.id, sender: "talent" })),
-          partnerDocs: (partnerDocs || []).map((doc) => ({ ...doc, ownerId: candidature.offre?.entreprise_id, sender: "entreprise" })),
+          ownDocs: [],
+          partnerDocs,
         };
       }));
 
@@ -4458,7 +4583,10 @@ const DocumentsTab = () => {
   };
   const confirmRequestedDocumentUpload = async (request: any) => {
     const file = pendingRequestedUploads[request.id];
-    if (!file || !user) return toast.error("Choisissez un fichier avant de valider l'envoi.");
+    if (!file || !user) {
+      toast.error("Choisissez un fichier avant de valider l'envoi.");
+      return;
+    }
     const uploadKey = `request-${request.id}`;
     setUploading(uploadKey);
     try {
@@ -4614,6 +4742,10 @@ const DocumentsTab = () => {
     const uploadKey = `request-${request.id}`;
     const selectedFile = pendingRequestedUploads[request.id];
 
+    if (request.status === "expired" || request.storage_deleted_at) {
+      return <span className="text-xs font-medium text-muted-foreground">Fichier supprimé</span>;
+    }
+
     if (request.storage_path) {
       return (
         <Button variant="ghost-glow" size="sm" onClick={() => ouvrirCheminStockage(request.storage_path)}>
@@ -4679,7 +4811,7 @@ const DocumentsTab = () => {
         icon={FolderOpen}
         eyebrow="Espace sécurisé"
         title="Mes documents"
-        description="Ajoutez vos pièces personnelles et échangez les documents demandés avec chaque entreprise depuis un seul espace."
+        description="Ajoutez vos pièces personnelles et répondez aux demandes administratives uniquement dans les dossiers de candidatures acceptées."
         aside={(
           <div className="flex items-center gap-3 rounded-2xl border border-emerald-500/20 bg-emerald-500/10 px-4 py-3">
             <ShieldCheck className="h-6 w-6 shrink-0 text-emerald-600 dark:text-emerald-300" />
@@ -4732,7 +4864,7 @@ const DocumentsTab = () => {
           <aside className="border-b border-border/60 bg-secondary/10 p-4 xl:border-b-0 xl:border-r">
             <button
               type="button"
-              onClick={() => { setExpandedFolderId(null); setShowShareUpload(false); }}
+              onClick={() => { setExpandedFolderId(null); }}
               className={`flex w-full items-center gap-3 rounded-xl border p-3 text-left transition-colors ${!selectedFolder ? "border-primary/30 bg-primary/10" : "border-transparent hover:border-border hover:bg-background/60"}`}
             >
               <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-primary/12 text-primary"><FileText className="h-5 w-5" /></div>
@@ -4857,26 +4989,10 @@ const DocumentsTab = () => {
                       <p className="truncate text-sm text-muted-foreground">{selectedFolder.offre?.titre || "Candidature"} · {selectedFolder.offre?.localisation || "Localisation non précisée"}</p>
                     </div>
                   </div>
-                  <Button variant="glow" size="sm" onClick={() => setShowShareUpload((current) => !current)}><Upload className="mr-1.5 h-4 w-4" /> Partager un document</Button>
                 </div>
 
                 {!documentsRequestsReady && (
                   <div className="rounded-xl border border-amber-500/25 bg-amber-500/10 p-3 text-sm text-amber-700 dark:text-amber-200">Les demandes de documents sont momentanément indisponibles. Vos documents déjà partagés restent accessibles.</div>
-                )}
-
-                {showShareUpload && (
-                  <div className="flex flex-col gap-3 rounded-xl border border-primary/20 bg-primary/5 p-4 sm:flex-row sm:items-end">
-                    <label className="flex-1 text-xs font-semibold text-muted-foreground">
-                      Catégorie
-                      <select value={shareUploadCategory} onChange={(event) => setShareUploadCategory(event.target.value)} className="mt-2 h-10 w-full rounded-lg border border-border bg-background px-3 text-sm text-foreground outline-none">
-                        {sharedCategories.map((category) => <option key={category.id} value={category.id}>{category.label}</option>)}
-                      </select>
-                    </label>
-                    <input type="file" id={`compact-shared-upload-${selectedFolder.id}`} className="hidden" accept={DOCUMENT_ACCEPT_ATTRIBUTE} onChange={(event) => uploadDocument(event, shareUploadCategory, selectedFolder.id)} />
-                    <Button variant="glow" size="sm" disabled={uploading === `${shareUploadCategory}-${selectedFolder.id}`} onClick={() => document.getElementById(`compact-shared-upload-${selectedFolder.id}`)?.click()}>
-                      <Upload className="mr-1.5 h-4 w-4" /> {uploading === `${shareUploadCategory}-${selectedFolder.id}` ? "Envoi..." : "Choisir et partager"}
-                    </Button>
-                  </div>
                 )}
 
                 <div className="flex flex-wrap gap-2">
@@ -4894,12 +5010,12 @@ const DocumentsTab = () => {
 
                 {(documentsView === "all" || documentsView === "requests") && (
                   <div className="overflow-hidden rounded-xl border border-border/70">
-                    <div className="flex items-center justify-between gap-3 bg-secondary/35 px-4 py-3"><div><p className="text-sm font-semibold">Documents demandés</p><p className="text-xs text-muted-foreground">Envoyez uniquement la pièce indiquée.</p></div><span className="text-xs font-semibold text-muted-foreground">{selectedRequests.length}</span></div>
+                    <div className="flex items-center justify-between gap-3 bg-secondary/35 px-4 py-3"><div><p className="text-sm font-semibold">Documents demandés</p><p className="text-xs text-muted-foreground">Cette candidature est acceptée. Vérifiez la demande avant de choisir le fichier à transmettre.</p><p className="mt-1 text-xs font-medium text-foreground">{TALENT_REQUEST_RETENTION_MESSAGE(selectedFolder.entrepriseNom)}</p></div><span className="text-xs font-semibold text-muted-foreground">{selectedRequests.length}</span></div>
                     {selectedRequests.length === 0 ? <p className="px-4 py-8 text-center text-sm text-muted-foreground">Aucune pièce demandée par cette entreprise.</p> : selectedRequests.map((request: any) => {
                       const statusMeta = getRequestStatusMeta(request.status);
                       return (
                         <div key={request.id} className="flex flex-col gap-3 border-t border-border/60 px-4 py-3 sm:flex-row sm:items-center sm:justify-between">
-                          <div className="min-w-0"><div className="flex flex-wrap items-center gap-2"><p className="text-sm font-semibold">{request.document_label}</p><span className={`rounded-full border px-2 py-0.5 text-[11px] font-semibold ${statusMeta.className}`}>{statusMeta.label}</span></div><p className="mt-1 text-xs text-muted-foreground">Demandé le {formatDocumentDate(request.requested_at)}{request.file_name ? ` · ${request.file_name}` : ""}</p></div>
+                          <div className="min-w-0"><div className="flex flex-wrap items-center gap-2"><p className="text-sm font-semibold">{request.document_label}</p><span className={`rounded-full border px-2 py-0.5 text-[11px] font-semibold ${statusMeta.className}`}>{statusMeta.label}</span></div><p className="mt-1 text-xs text-muted-foreground">Demandé le {formatDocumentDate(request.requested_at)}{request.file_name ? ` · ${request.file_name}` : ""}{request.retention_expires_at ? ` · Suppression prévue le ${formatDocumentDate(request.retention_expires_at)}` : ""}</p></div>
                           {renderRequestedDocumentAction(request, selectedFolder.entrepriseNom)}
                         </div>
                       );
@@ -4909,22 +5025,28 @@ const DocumentsTab = () => {
 
                 {(documentsView === "all" || documentsView === "shared") && (
                   <div className="overflow-hidden rounded-xl border border-border/70">
+                    <div className="border-b border-border/60 bg-emerald-500/5 px-4 py-3 text-xs leading-5 text-muted-foreground">
+                      {TALENT_RECEIVED_DOCUMENT_RETENTION_MESSAGE}
+                    </div>
                     <div className="hidden grid-cols-[minmax(0,1.35fr)_minmax(120px,0.6fr)_120px_120px] gap-3 bg-secondary/35 px-4 py-2.5 text-xs font-semibold text-muted-foreground sm:grid"><span>Document</span><span>Catégorie</span><span>Partagé par</span><span className="text-right">Actions</span></div>
                     {selectedSharedDocuments.length === 0 ? <p className="px-4 py-10 text-center text-sm text-muted-foreground">Aucun document échangé dans ce dossier.</p> : selectedSharedDocuments.map((documentItem: any) => (
                       <div key={`${documentItem.direction}-${documentItem.categoryId}-${documentItem.name}`} className="grid gap-3 border-t border-border/60 px-4 py-3 first:border-t-0 sm:grid-cols-[minmax(0,1.35fr)_minmax(120px,0.6fr)_120px_120px] sm:items-center">
-                        <div className="flex min-w-0 items-center gap-3"><div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-primary/10 text-primary"><FileText className="h-4 w-4" /></div><div className="min-w-0"><p className="truncate text-sm font-semibold">{formatDocumentName(documentItem.name)}</p><p className="text-xs text-muted-foreground">{formatDocumentDate(documentItem.updated_at || documentItem.created_at)}</p></div></div>
+                        <div className="flex min-w-0 items-center gap-3"><div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-primary/10 text-primary"><FileText className="h-4 w-4" /></div><div className="min-w-0"><p className="truncate text-sm font-semibold">{formatDocumentName(documentItem.name)}</p><p className="text-xs text-muted-foreground">{documentItem.retentionRecord ? (documentItem.retentionRecord.storage_deleted_at ? `Supprimé le ${formatDocumentDate(documentItem.retentionRecord.storage_deleted_at)}` : `Disponible jusqu’au ${formatDocumentDate(documentItem.retentionRecord.expires_at)}`) : formatDocumentDate(documentItem.updated_at || documentItem.created_at)}</p></div></div>
                         <span className="text-xs font-medium text-muted-foreground">{documentItem.categoryLabel}</span>
                         <span className={`w-fit rounded-full px-2.5 py-1 text-xs font-semibold ${documentItem.direction === "sent" ? "bg-primary/10 text-primary" : "bg-emerald-500/10 text-emerald-600 dark:text-emerald-300"}`}>{documentItem.direction === "sent" ? "Vous" : "Entreprise"}</span>
                         <div className="flex justify-start gap-2 sm:justify-end">
-                          <Button variant="ghost-glow" size="sm" onClick={() => telechargerDocument(documentItem.ownerId, documentItem.categoryId, documentItem.name, selectedFolder.id)}><Eye className="mr-1 h-3.5 w-3.5" /> Ouvrir</Button>
-                          {documentItem.direction === "sent" && <ConfirmActionDialog title="Supprimer ce document partagé ?" description="Le document ne sera plus disponible dans ce dossier partagé." onConfirm={() => supprimerDocument(documentItem.categoryId, documentItem.name, selectedFolder.id)}><button type="button" aria-label="Supprimer" className="rounded-lg p-2 text-red-500 hover:bg-red-500/10"><Trash2 className="h-4 w-4" /></button></ConfirmActionDialog>}
+                          {documentItem.retentionRecord?.storage_deleted_at ? (
+                            <span className="text-xs font-medium text-muted-foreground">Supprimé</span>
+                          ) : (
+                            <Button variant="ghost-glow" size="sm" onClick={() => documentItem.storagePath ? ouvrirCheminStockage(documentItem.storagePath) : telechargerDocument(documentItem.ownerId, documentItem.categoryId, documentItem.name, selectedFolder.id)}><Eye className="mr-1 h-3.5 w-3.5" /> Télécharger</Button>
+                          )}
                         </div>
                       </div>
                     ))}
                   </div>
                 )}
 
-                <div className="flex items-start gap-3 rounded-xl border border-emerald-500/20 bg-emerald-500/5 p-4"><ShieldCheck className="mt-0.5 h-5 w-5 shrink-0 text-emerald-600 dark:text-emerald-300" /><p className="text-xs leading-5 text-muted-foreground">Ces documents sont accessibles uniquement par vous et {selectedFolder.entrepriseNom}. Chaque ouverture et chaque partage sont protégés.</p></div>
+                <div className="flex items-start gap-3 rounded-xl border border-emerald-500/20 bg-emerald-500/5 p-4"><ShieldCheck className="mt-0.5 h-5 w-5 shrink-0 text-emerald-600 dark:text-emerald-300" /><p className="text-xs leading-5 text-muted-foreground">Les documents reçus de {selectedFolder.entrepriseNom} sont réservés à votre accès pendant 90 jours. Pour une pièce que vous envoyez à sa demande, l’entreprise y accède seulement jusqu’à la suppression automatique prévue.</p></div>
               </div>
             )}
           </div>

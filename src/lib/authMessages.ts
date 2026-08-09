@@ -143,6 +143,30 @@ export const translateAppError = (
     return "La reponse IA est incomplete. Relancez la generation.";
   }
 
+  if (normalized.includes("generated_offer_failed_compliance_check")) {
+    return "Le texte genere contient une formulation incompatible avec les regles de publication. Modifiez les informations puis relancez la generation.";
+  }
+
+  if (normalized.includes("missing_offer_facts") || normalized.includes("missing_temporary_contract")) {
+    return "Completez le contrat, sa duree eventuelle, la localisation, le secteur et l'experience avant de generer l'offre.";
+  }
+
+  if (normalized.includes("invalid_salary_range")) {
+    return "Renseignez les deux bornes de remuneration et leur periode, ou laissez les montants vides.";
+  }
+
+  if (normalized.includes("offer_compliance:")) {
+    return "Cette offre ne respecte pas encore toutes les regles de publication. Corrigez les points indiques puis reessayez.";
+  }
+
+  if (normalized.includes("accepted_candidature_required")) {
+    return "Les documents administratifs peuvent etre demandes uniquement apres acceptation de la candidature.";
+  }
+
+  if (normalized.includes("document_request_not_allowed")) {
+    return "Ce type de document ne peut pas etre demande dans ce dossier.";
+  }
+
   if (normalized.includes("location_fetch_failed")) {
     return "La recherche de localisation est indisponible pour le moment.";
   }

@@ -7,6 +7,11 @@ import { Input } from "@/components/ui/input";
 import { ArrowLeft, Building2, Hash, Lock, Mail, Phone, Sparkles } from "lucide-react";
 import { toast } from "sonner";
 import { translateAuthError } from "@/lib/authMessages";
+import LegalAcknowledgementFields from "@/components/LegalAcknowledgementFields";
+import {
+  getLegalSignupMetadata,
+  rememberPendingLegalAcknowledgement,
+} from "@/lib/legal";
 
 const getAuthRedirectUrl = (path: string) => {
   const isLocalhost = ["localhost", "127.0.0.1"].includes(window.location.hostname);
@@ -33,6 +38,8 @@ const EntrepriseAuth = () => {
   const [companyName, setCompanyName] = useState("");
   const [siret, setSiret] = useState("");
   const [telephone, setTelephone] = useState("");
+  const [termsAccepted, setTermsAccepted] = useState(false);
+  const [privacyAcknowledged, setPrivacyAcknowledged] = useState(false);
   const [loading, setLoading] = useState(false);
   const { user, profile, loading: authLoading, signOut } = useAuth();
   const navigate = useNavigate();
@@ -75,6 +82,12 @@ const EntrepriseAuth = () => {
         toast.success("Connexion réussie !");
         navigate("/entreprise/dashboard");
       } else {
+        if (!termsAccepted || !privacyAcknowledged) {
+          toast.error("Acceptez les CGU et confirmez la lecture de la politique de confidentialité.");
+          setLoading(false);
+          return;
+        }
+
         if (siret.length !== 14) {
           toast.error("Le SIRET doit contenir 14 chiffres.");
           setLoading(false);
@@ -99,7 +112,14 @@ const EntrepriseAuth = () => {
           email,
           password,
           options: {
-            data: { role: "entreprise", full_name: companyName, siret, telephone: telephone.trim(), company_phone: telephone.trim() },
+            data: {
+              role: "entreprise",
+              full_name: companyName,
+              siret,
+              telephone: telephone.trim(),
+              company_phone: telephone.trim(),
+              ...getLegalSignupMetadata("entreprise_email_signup"),
+            },
             emailRedirectTo: getAuthRedirectUrl("/auth-confirmed/entreprise"),
           },
         });
@@ -177,9 +197,17 @@ const EntrepriseAuth = () => {
   };
 
   const handleGoogleLogin = async () => {
+    if (!isLogin && (!termsAccepted || !privacyAcknowledged)) {
+      toast.error("Acceptez les CGU et confirmez la lecture de la politique de confidentialité.");
+      return;
+    }
+
     setLoading(true);
 
     try {
+      if (!isLogin) {
+        rememberPendingLegalAcknowledgement("entreprise_google_signup");
+      }
       sessionStorage.setItem("spottedtalent_reactivate_login", "1");
       const { error } = await supabase.auth.signInWithOAuth({
         provider: "google",
@@ -364,7 +392,21 @@ const EntrepriseAuth = () => {
                 </div>
               )}
 
-              <Button variant="glow" className="w-full" disabled={loading}>
+              {!isLogin && (
+                <LegalAcknowledgementFields
+                  termsAccepted={termsAccepted}
+                  privacyAcknowledged={privacyAcknowledged}
+                  onTermsAcceptedChange={setTermsAccepted}
+                  onPrivacyAcknowledgedChange={setPrivacyAcknowledged}
+                  disabled={loading}
+                />
+              )}
+
+              <Button
+                variant="glow"
+                className="w-full"
+                disabled={loading || (!isLogin && (!termsAccepted || !privacyAcknowledged))}
+              >
                 {loading ? "Chargement..." : isLogin ? "Se connecter" : "Commencer l'essai gratuit"}
               </Button>
 
@@ -381,11 +423,7 @@ const EntrepriseAuth = () => {
 
               {!isLogin && (
                 <p className="text-center text-xs text-muted-foreground">
-                  En créant un compte, vous acceptez nos{" "}
-                  <a href="/cgu" className="text-primary hover:underline">CGU</a>{" "}
-                  et notre{" "}
-                  <a href="/confidentialite" className="text-primary hover:underline">politique de confidentialité</a>.
-                  Le SIRET est utilisé uniquement pour vérifier votre identité.
+                  Le SIRET est utilisé uniquement pour vérifier l’identité de l’entreprise.
                 </p>
               )}
 
@@ -398,7 +436,13 @@ const EntrepriseAuth = () => {
                 </div>
               </div>
 
-              <Button type="button" variant="ghost-glow" className="w-full" onClick={handleGoogleLogin} disabled={loading}>
+              <Button
+                type="button"
+                variant="ghost-glow"
+                className="w-full"
+                onClick={handleGoogleLogin}
+                disabled={loading || (!isLogin && (!termsAccepted || !privacyAcknowledged))}
+              >
                 <GoogleLogo />
                 Continuer avec Google
               </Button>

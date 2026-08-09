@@ -9,8 +9,14 @@ const Footer = () => (
         <span className="gradient-text">Spotted Talent</span>
       </Link>
       <div className="flex flex-wrap justify-center gap-6 text-sm text-muted-foreground">
+        <Link to="/aide" className="transition-colors hover:text-foreground">
+          Aide & FAQ
+        </Link>
         <Link to="/cgu" className="transition-colors hover:text-foreground">
           Mentions légales & CGU
+        </Link>
+        <Link to="/cgv" className="transition-colors hover:text-foreground">
+          CGV Entreprises
         </Link>
         <Link to="/confidentialite" className="transition-colors hover:text-foreground">
           Confidentialité

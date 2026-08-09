@@ -7,6 +7,7 @@ import { TooltipProvider } from "@/components/ui/tooltip";
 import RouteThemeToggle from "@/components/RouteThemeToggle";
 import { AuthProvider } from "@/contexts/AuthContext";
 import ConfirmedEmailRoute from "@/components/ConfirmedEmailRoute";
+import SecurityIncidentGate from "@/components/SecurityIncidentGate";
 
 const Index = lazy(() => import("./pages/Index.tsx"));
 const TalentAuth = lazy(() => import("./pages/TalentAuth.tsx"));
@@ -19,7 +20,9 @@ const EntrepriseProfil = lazy(() => import("./pages/EntrepriseProfil.tsx"));
 const Admin = lazy(() => import("./pages/Admin.tsx"));
 const NotFound = lazy(() => import("./pages/NotFound.tsx"));
 const CGU = lazy(() => import("./pages/CGU.tsx"));
+const CGV = lazy(() => import("./pages/CGV.tsx"));
 const Confidentialite = lazy(() => import("./pages/Confidentialite.tsx"));
+const Aide = lazy(() => import("./pages/Aide.tsx"));
 const ResetPassword = lazy(() => import("./pages/ResetPassword.tsx"));
 const OAuthComplete = lazy(() => import("./pages/OAuthComplete.tsx"));
 const AuthConfirmed = lazy(() => import("./pages/AuthConfirmed.tsx"));
@@ -54,7 +57,9 @@ const App = () => (
                 path="/talent/dashboard"
                 element={
                   <ConfirmedEmailRoute role="talent">
-                    <TalentDashboard />
+                    <SecurityIncidentGate>
+                      <TalentDashboard />
+                    </SecurityIncidentGate>
                   </ConfirmedEmailRoute>
                 }
               />
@@ -62,7 +67,9 @@ const App = () => (
                 path="/entreprise/dashboard"
                 element={
                   <ConfirmedEmailRoute role="entreprise">
-                    <EntrepriseDashboard />
+                    <SecurityIncidentGate>
+                      <EntrepriseDashboard />
+                    </SecurityIncidentGate>
                   </ConfirmedEmailRoute>
                 }
               />
@@ -81,7 +88,9 @@ const App = () => (
               />
               <Route path="/admin" element={<Admin />} />
               <Route path="/cgu" element={<CGU />} />
+              <Route path="/cgv" element={<CGV />} />
               <Route path="/confidentialite" element={<Confidentialite />} />
+              <Route path="/aide" element={<Aide />} />
               <Route path="*" element={<NotFound />} />
             </Routes>
           </Suspense>

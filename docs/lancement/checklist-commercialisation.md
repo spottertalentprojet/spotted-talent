@@ -1,6 +1,9 @@
 # Checklist avant commercialisation - Spotted Talent
 
-Date de mise à jour : 26 juillet 2026
+Date de mise à jour : 9 août 2026
+
+Le suivi juridique et administratif détaillé est centralisé dans
+`docs/legal/plan-action-avant-ouverture-2026-09-01.md`.
 
 Objectif : vérifier que le site est prêt pour des tests professionnels puis pour une ouverture commerciale.
 
@@ -14,9 +17,12 @@ Objectif : vérifier que le site est prêt pour des tests professionnels puis po
 - [x] Durées de conservation indiquées.
 - [x] Procédure fuite de données préparée.
 - [ ] Faire relire par un professionnel RGPD ou juriste.
+- [ ] Faire valider la qualification responsable/sous-traitant pour chaque traitement.
 - [ ] Valider les bases légales exactes pour chaque traitement.
 - [ ] Valider les durées définitives de conservation.
 - [ ] Télécharger ou accepter les DPA des sous-traitants.
+- [ ] Préparer le DPA article 28 destiné aux entreprises clientes.
+- [ ] Finaliser et signer le registre article 30 et l'AIPD obligatoire recrutement/matching.
 - [ ] Décider si un DPO est nécessaire selon le volume réel de données.
 
 ## 2. Sécurité technique
@@ -33,6 +39,8 @@ Objectif : vérifier que le site est prêt pour des tests professionnels puis po
 - [x] Build et tests automatiques passent.
 - [ ] Faire tester par une personne externe avec comptes talent et entreprise.
 - [ ] Faire un test d'accès croisé : un compte ne doit jamais ouvrir le document d'un autre compte.
+- [ ] Tester l'expiration et la révocation réelles des liens de documents.
+- [ ] Effectuer un exercice de violation de données et conserver le compte rendu daté.
 - [ ] Faire un test de montée en charge simple.
 - [ ] Mettre en place une surveillance régulière des logs Supabase/Vercel.
 
@@ -56,6 +64,7 @@ Objectif : vérifier que le site est prêt pour des tests professionnels puis po
 - [x] Prix affichés en HT.
 - [ ] Faire un test complet en mode production Stripe avant vraie vente.
 - [ ] Vérifier les mentions de TVA, factures et obligations comptables.
+- [ ] Confirmer le régime de TVA avant tout encaissement : le checkout applique actuellement 20 %.
 - [ ] Vérifier les paramètres de résiliation/modification d'abonnement dans Stripe Portal.
 
 ## 5. Fonctionnel métier

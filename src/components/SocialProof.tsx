@@ -1,27 +1,24 @@
 import { motion } from "framer-motion";
 
-const stats = [
-  { value: "5 000+", label: "CV optimisés" },
-  { value: "1 000+", label: "Utilisateurs actifs" },
-  { value: "98%", label: "Satisfaction" },
-  { value: "30s", label: "Temps d'analyse" },
+const productFacts = [
+  { value: "0 €", label: "Pour les talents" },
+  { value: "2", label: "Espaces dédiés" },
+  { value: "5", label: "Critères de matching" },
+  { value: "30 j", label: "Échéance des documents protégés" },
 ];
 
-const testimonials = [
+const useCases = [
   {
-    name: "Sophie M.",
-    role: "Développeuse",
-    text: "Mon CV a été transformé en quelques secondes. J'ai décroché 3 entretiens en une semaine.",
+    title: "Préparer sa candidature",
+    text: "Le talent analyse son CV, génère une base de lettre puis corrige librement chaque élément avant l’envoi.",
   },
   {
-    name: "Thomas L.",
-    role: "Chef de projet",
-    text: "Le matching intelligent m'a fait gagner du temps et m'a montré des offres vraiment utiles.",
+    title: "Suivre sans automatiser la décision",
+    text: "L’entreprise centralise les candidatures et utilise un score indicatif, tout en conservant la décision humaine.",
   },
   {
-    name: "Clara D.",
-    role: "RH Manager",
-    text: "On suit mieux les candidatures et les documents. L'espace entreprise est plus pratique qu'un simple tableau.",
+    title: "Échanger les pièces utiles",
+    text: "Les documents restent liés au dossier concerné et les nouvelles demandes sont limitées aux justificatifs métier nécessaires.",
   },
 ];
 
@@ -36,46 +33,41 @@ const SocialProof = () => (
         className="mb-16 text-center"
       >
         <h2 className="mb-4 text-3xl font-bold sm:text-4xl">
-          Ils nous font <span className="gradient-text">confiance</span>
+          Des fonctions <span className="gradient-text">concrètes et transparentes</span>
         </h2>
+        <p className="mx-auto max-w-2xl text-muted-foreground">
+          En phase bêta, nous présentons uniquement des caractéristiques vérifiables du produit.
+        </p>
       </motion.div>
 
       <div className="mb-16 grid grid-cols-2 gap-6 lg:grid-cols-4">
-        {stats.map((stat, index) => (
+        {productFacts.map((fact, index) => (
           <motion.div
-            key={stat.label}
+            key={fact.label}
             initial={{ opacity: 0, scale: 0.9 }}
             whileInView={{ opacity: 1, scale: 1 }}
             viewport={{ once: true }}
             transition={{ delay: index * 0.1 }}
             className="glass-card p-6 text-center"
           >
-            <div className="mb-1 text-3xl font-extrabold gradient-text sm:text-4xl">{stat.value}</div>
-            <div className="text-sm text-muted-foreground">{stat.label}</div>
+            <div className="mb-1 text-3xl font-extrabold gradient-text sm:text-4xl">{fact.value}</div>
+            <div className="text-sm text-muted-foreground">{fact.label}</div>
           </motion.div>
         ))}
       </div>
 
       <div className="grid gap-6 md:grid-cols-3">
-        {testimonials.map((testimonial, index) => (
+        {useCases.map((useCase, index) => (
           <motion.div
-            key={testimonial.name}
+            key={useCase.title}
             initial={{ opacity: 0, y: 20 }}
             whileInView={{ opacity: 1, y: 0 }}
             viewport={{ once: true }}
             transition={{ delay: index * 0.1 }}
             className="glass-card p-6"
           >
-            <p className="mb-4 text-sm leading-relaxed text-muted-foreground">"{testimonial.text}"</p>
-            <div className="flex items-center gap-3">
-              <div className="flex h-10 w-10 items-center justify-center rounded-full gradient-bg text-sm font-bold text-primary-foreground">
-                {testimonial.name[0]}
-              </div>
-              <div>
-                <div className="text-sm font-semibold">{testimonial.name}</div>
-                <div className="text-xs text-muted-foreground">{testimonial.role}</div>
-              </div>
-            </div>
+            <h3 className="mb-3 font-semibold text-foreground">{useCase.title}</h3>
+            <p className="text-sm leading-relaxed text-muted-foreground">{useCase.text}</p>
           </motion.div>
         ))}
       </div>

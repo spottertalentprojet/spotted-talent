@@ -1,194 +1,235 @@
 import type React from "react";
+import { PRIVACY_NOTICE_VERSION_LABEL } from "@/lib/legal";
+import { SUPPORT_EMAIL } from "@/lib/contact";
 
-const CONTACT_EMAIL = "contact@spottedtalent.fr";
-
-const Section = ({
-  title,
-  children,
-}: {
-  title: string;
-  children: React.ReactNode;
-}) => (
-  <section className="mb-9 rounded-2xl border border-border/60 bg-card/70 p-6 shadow-sm">
+const Section = ({ title, children }: { title: string; children: React.ReactNode }) => (
+  <section className="rounded-2xl border border-border/60 bg-card/70 p-6 shadow-sm">
     <h2 className="mb-3 text-xl font-bold text-foreground">{title}</h2>
     <div className="space-y-3 text-sm leading-7 text-muted-foreground">{children}</div>
   </section>
 );
 
-const Confidentialite = () => {
-  return (
-    <div className="min-h-screen bg-background px-6 py-12 text-foreground">
-      <main className="mx-auto max-w-5xl">
+const Confidentialite = () => (
+  <div className="min-h-screen bg-background px-6 py-12 text-foreground">
+    <main className="mx-auto max-w-5xl space-y-8">
+      <div>
         <p className="mb-3 text-sm font-semibold uppercase tracking-[0.24em] text-primary">Données personnelles</p>
         <h1 className="mb-2 text-3xl font-bold gradient-text">Politique de confidentialité</h1>
-        <p className="mb-10 text-muted-foreground">
-          Dernière mise à jour : juillet 2026. Cette page explique comment Spotted Talent collecte, utilise,
-          protège et conserve les données personnelles.
+        <p className="text-muted-foreground">
+          Version {PRIVACY_NOTICE_VERSION_LABEL}. Cette page décrit les traitements
+          actuellement prévus pour Spotted Talent.
         </p>
+      </div>
 
-        <Section title="1. Responsable du traitement">
-          <p>
-            Le responsable du traitement est <strong>Spotted Talent</strong>, situé à La Ravoire, 73490, France.
-            Pour toute question liée aux données personnelles, vous pouvez écrire à{" "}
-            <a href={`mailto:${CONTACT_EMAIL}`} className="text-primary">
-              {CONTACT_EMAIL}
-            </a>
-            .
-          </p>
-        </Section>
+      <div className="rounded-2xl border border-amber-500/30 bg-amber-500/10 p-5 text-sm leading-6 text-foreground">
+        <p className="font-semibold">Mise en service commerciale prévue à compter du 1er septembre 2026</p>
+        <p className="mt-1 text-muted-foreground">
+          Les traitements décrits ci-dessous doivent être relus dans le cadre de la finalisation RGPD avant toute
+          commercialisation large. Les données de test doivent rester fictives, en particulier les documents administratifs.
+        </p>
+      </div>
 
-        <Section title="2. Données collectées">
-          <p>Spotted Talent collecte uniquement les données utiles au fonctionnement du service :</p>
-          <ul className="list-disc space-y-1 pl-6">
-            <li>compte utilisateur : nom, prénom, e-mail, téléphone, rôle, date de création, dernière connexion ;</li>
-            <li>profil talent : CV, lettre de motivation, poste recherché, compétences, localisation, disponibilité ;</li>
-            <li>candidatures : offre, statut, historique, messages et échanges liés au recrutement ;</li>
-            <li>documents administratifs : pièces demandées dans un dossier accepté, comme RIB, pièce d'identité ou permis ;</li>
-            <li>profil entreprise : nom, SIRET, adresse, secteur, logo, informations de recrutement ;</li>
-            <li>facturation : formule choisie, statut d'abonnement, factures et identifiant client Stripe ;</li>
-            <li>données techniques : logs de sécurité, événements applicatifs, adresse IP ou informations de session si nécessaire.</li>
-          </ul>
-        </Section>
+      <Section title="1. Responsable du traitement et contact">
+        <p>
+          Le responsable du traitement est <strong>Yousri Frigui, entrepreneur individuel</strong>, exerçant sous le
+          nom commercial <strong>Spotted Talent</strong>, SIREN 838 378 156, établissement principal SIRET
+          838 378 156 00023, situé 6 R du Pre Hibou, 73490 La Ravoire, France. L’activité est immatriculée au
+          Registre national des entreprises depuis le 5 août 2026.
+        </p>
+        <p>
+          Pour toute question ou demande relative aux données :{" "}
+          <a href={`mailto:${SUPPORT_EMAIL}`} className="text-primary hover:underline">{SUPPORT_EMAIL}</a>.
+        </p>
+      </Section>
 
-        <Section title="3. Pourquoi ces données sont utilisées">
-          <ul className="list-disc space-y-1 pl-6">
-            <li>créer et sécuriser les comptes talent et entreprise ;</li>
-            <li>permettre la publication d'offres, les candidatures, la messagerie et le suivi des statuts ;</li>
-            <li>permettre l'envoi et la consultation de documents liés à une candidature acceptée ;</li>
-            <li>vérifier l'identité d'une entreprise à partir du SIRET ;</li>
-            <li>gérer les abonnements, paiements, essais, factures et accès aux fonctions payantes ;</li>
-            <li>envoyer les e-mails nécessaires : confirmation, sécurité, rappel d'inactivité, notification utile ;</li>
-            <li>améliorer la sécurité, corriger les erreurs et empêcher les abus ;</li>
-            <li>fournir des aides par IA, par exemple analyse de CV ou génération d'offre, lorsque l'utilisateur l'utilise.</li>
-          </ul>
-        </Section>
+      <Section title="2. Données obligatoires et facultatives">
+        <p>
+          Une adresse électronique, un mot de passe pour la connexion par e-mail, le rôle du compte et un nom
+          d’affichage sont nécessaires pour créer un compte. Un numéro de téléphone est actuellement demandé lors de
+          l’inscription classique. Une entreprise doit fournir les informations nécessaires à sa vérification avant
+          d’accéder à la facturation réelle.
+        </p>
+        <p>
+          Le CV, l’adresse détaillée, la présentation, les compétences, la mobilité et les documents métier sont
+          facultatifs tant que l’utilisateur n’emploie pas la fonction correspondante. Ne pas fournir une donnée
+          facultative limite seulement la personnalisation, le matching ou le dossier concerné.
+        </p>
+      </Section>
 
-        <Section title="4. Bases légales">
-          <p>
-            Les traitements reposent principalement sur l'exécution du service demandé par l'utilisateur, les
-            mesures précontractuelles, l'intérêt légitime de sécurité et de prévention des abus, ainsi que les
-            obligations légales liées à la facturation et à la comptabilité. Lorsque le consentement est requis,
-            il est demandé séparément.
-          </p>
-        </Section>
+      <Section title="3. Catégories de données collectées">
+        <ul className="list-disc space-y-1 pl-6">
+          <li>compte : identité déclarée, e-mail, téléphone, rôle, dates de création et de connexion ;</li>
+          <li>profil talent : poste, secteur, contrat, compétences, localisation, disponibilité, CV et lettre ;</li>
+          <li>recrutement : offres, candidatures, réponses, statuts, messages et notes liées au dossier ;</li>
+          <li>pièces métier autorisées : diplôme, certification, permis, habilitation ou autorisation de travail ;</li>
+          <li>entreprise : nom, SIRET, adresse, secteur, contacts, logo et informations de facturation ;</li>
+          <li>paiement : formule, statut, identifiants Stripe et factures, sans numéro complet de carte ;</li>
+          <li>sécurité : identifiants techniques, journaux d’accès documentaire, erreurs et informations de session ;</li>
+          <li>IA : texte strictement utile envoyé volontairement pour une analyse ou une génération.</li>
+        </ul>
+      </Section>
 
-        <Section title="5. Documents sensibles et limitation des demandes">
-          <p>
-            Les documents sensibles ou administratifs ne doivent être demandés que lorsqu'ils sont nécessaires au
-            traitement d'un dossier concret. Une entreprise ne doit pas demander une pièce sans lien avec la
-            candidature, la mission ou une obligation légale.
-          </p>
-          <p>
-            Les dossiers partagés sont limités aux utilisateurs concernés : le talent et l'entreprise liée à la
-            candidature. Les documents personnels du talent restent séparés des documents demandés par une
-            entreprise.
-          </p>
-        </Section>
-
-        <Section title="6. Durées de conservation">
-          <ul className="list-disc space-y-1 pl-6">
-            <li>Compte actif : données conservées pendant l'utilisation du service.</li>
-            <li>Compte inactif : rappels possibles après environ 23 et 29 jours, puis suspension après 30 jours sans connexion.</li>
-            <li>Documents sensibles demandés : conservation limitée, avec suppression automatique possible après 30 jours.</li>
-            <li>Candidatures et messages : conservés le temps nécessaire au suivi du recrutement, puis supprimés ou anonymisés sur demande lorsque c'est possible.</li>
-            <li>Factures et données comptables : conservées selon les obligations légales applicables.</li>
-            <li>Logs de sécurité : conservés pendant une durée limitée nécessaire à la sécurité, à la preuve d'accès et au diagnostic des incidents.</li>
-          </ul>
-        </Section>
-
-        <Section title="7. Sécurité des données">
-          <p>Spotted Talent applique plusieurs mesures de protection :</p>
-          <ul className="list-disc space-y-1 pl-6">
-            <li>authentification sécurisée par e-mail ou Google ;</li>
-            <li>confirmation e-mail à la création du compte avant accès complet ;</li>
-            <li>double authentification facultative par application TOTP pour les comptes Entreprise et Administration ;</li>
-            <li>règles d'accès par rôle et par utilisateur dans la base de données ;</li>
-            <li>stockage privé des documents, sans accès public direct ;</li>
-            <li>liens temporaires pour ouvrir les fichiers ;</li>
-            <li>journalisation des accès aux documents ;</li>
-            <li>chiffrement applicatif des nouveaux documents sensibles lorsque la fonction est disponible ;</li>
-            <li>secrets techniques stockés côté serveur et non dans le navigateur ;</li>
-            <li>suppression planifiée des documents expirés par fonction serveur sécurisée.</li>
-          </ul>
-        </Section>
-
-        <Section title="8. Sous-traitants et services utilisés">
-          <p>Pour fonctionner, Spotted Talent utilise notamment les prestataires suivants :</p>
-          <ul className="list-disc space-y-1 pl-6">
-            <li><strong>Supabase</strong> : base de données, authentification, stockage, fonctions serveur ;</li>
-            <li><strong>Vercel</strong> : hébergement du site web ;</li>
-            <li><strong>Stripe</strong> : paiements, abonnements, portail client, factures ;</li>
-            <li><strong>Resend</strong> : e-mails transactionnels ;</li>
-            <li><strong>Groq</strong> : fonctions d'intelligence artificielle utilisées à la demande ;</li>
-            <li><strong>Google</strong> : connexion OAuth lorsque l'utilisateur choisit “Continuer avec Google”.</li>
-          </ul>
-          <p>
-            Ces prestataires peuvent traiter certaines données strictement nécessaires à leur mission. Les contrats,
-            lieux de traitement et garanties de ces prestataires doivent être vérifiés avant une commercialisation à
-            grande échelle.
-          </p>
-        </Section>
-
-        <Section title="9. Paiement et carte bancaire">
-          <p>
-            Les paiements sont traités par Stripe. Spotted Talent ne stocke pas le numéro complet de carte bancaire.
-            Les informations de paiement, les mandats, les factures et les moyens de paiement sont gérés dans
-            l'environnement sécurisé de Stripe.
-          </p>
-        </Section>
-
-        <Section title="10. Intelligence artificielle">
-          <p>
-            Lorsque l'utilisateur lance une analyse de CV, une génération de lettre ou une aide à la rédaction
-            d'offre, certaines données nécessaires peuvent être transmises au service d'IA utilisé. L'utilisateur
-            doit relire les résultats avant publication ou envoi. Les documents sensibles ne doivent pas être
-            transmis à l'IA s'ils ne sont pas nécessaires à la fonction demandée.
-          </p>
-        </Section>
-
-        <Section title="11. Droits des utilisateurs">
-          <p>
-            Conformément au RGPD, vous pouvez demander l'accès, la rectification, l'effacement, la limitation,
-            l'opposition ou la portabilité de vos données. Vous pouvez aussi demander des informations sur les
-            traitements réalisés.
-          </p>
-          <p>
-            Pour exercer ces droits, écrivez à{" "}
-            <a href={`mailto:${CONTACT_EMAIL}`} className="text-primary">
-              {CONTACT_EMAIL}
-            </a>
-            . Une réponse sera apportée dans les délais prévus par la réglementation. Certaines données peuvent
-            être conservées lorsqu'une obligation légale l'impose, notamment en matière de facturation.
-          </p>
-          <p>Vous pouvez également déposer une réclamation auprès de la CNIL.</p>
-        </Section>
-
-        <Section title="12. Incident ou fuite de données">
-          <p>En cas d'incident de sécurité, Spotted Talent prévoit les actions suivantes :</p>
-          <ul className="list-disc space-y-1 pl-6">
-            <li>identifier l'origine de l'incident et bloquer l'accès non autorisé ;</li>
-            <li>évaluer les données concernées et le niveau de risque pour les personnes ;</li>
-            <li>documenter l'incident et les mesures prises ;</li>
-            <li>notifier la CNIL dans les 72 heures lorsque la réglementation l'exige ;</li>
-            <li>informer les utilisateurs concernés si le risque pour leurs droits et libertés est élevé.</li>
-          </ul>
-        </Section>
-
-        <Section title="13. Cookies et stockage local">
-          <p>
-            Le site utilise principalement des cookies ou stockages techniques nécessaires à la connexion, à la
-            sécurité et au fonctionnement normal du service. Aucun cookie publicitaire tiers n'est utilisé à ce
-            stade. Si des outils de mesure d'audience ou de publicité sont ajoutés, une information et un choix
-            adaptés seront mis en place.
-          </p>
-        </Section>
-
-        <div className="mt-12 border-t border-border/50 pt-6 text-center text-sm text-muted-foreground">
-          © 2026 Spotted Talent - Politique de confidentialité
+      <Section title="4. Finalités et bases légales">
+        <div className="overflow-x-auto">
+          <table className="w-full min-w-[680px] border-collapse text-left text-sm">
+            <thead>
+              <tr className="border-b border-border">
+                <th className="px-3 py-2 font-semibold text-foreground">Finalité</th>
+                <th className="px-3 py-2 font-semibold text-foreground">Base principale</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-border/60">
+              <tr><td className="px-3 py-2">Créer le compte et fournir les espaces demandés</td><td className="px-3 py-2">Exécution du service et mesures précontractuelles</td></tr>
+              <tr><td className="px-3 py-2">Publier, candidater, échanger et suivre un dossier</td><td className="px-3 py-2">Exécution du service</td></tr>
+              <tr><td className="px-3 py-2">Calculer un score indicatif de correspondance</td><td className="px-3 py-2">Exécution du service et intérêt légitime d’organisation</td></tr>
+              <tr><td className="px-3 py-2">Sécuriser les comptes, tracer les accès et prévenir les abus</td><td className="px-3 py-2">Intérêt légitime de sécurité</td></tr>
+              <tr><td className="px-3 py-2">Gérer les abonnements, paiements et factures</td><td className="px-3 py-2">Contrat et obligations comptables</td></tr>
+              <tr><td className="px-3 py-2">Analyser ou générer un contenu à la demande</td><td className="px-3 py-2">Action volontaire et exécution de la fonction demandée</td></tr>
+              <tr><td className="px-3 py-2">Envoyer confirmations et alertes indispensables</td><td className="px-3 py-2">Exécution du service et intérêt légitime de sécurité</td></tr>
+            </tbody>
+          </table>
         </div>
-      </main>
-    </div>
-  );
-};
+        <p>
+          Une prospection commerciale éventuelle devra disposer d’un choix séparé. L’acceptation des CGU ne vaut
+          pas consentement à recevoir de la publicité.
+        </p>
+      </Section>
+
+      <Section title="5. Matching, classement et décision humaine">
+        <p>
+          Le matching actuel est un calcul par règles fondé sur le secteur (30 %), le contrat (20 %), la localisation
+          (20 %), les compétences (25 %) et les permis ou habilitations (5 %). Ces critères proviennent des
+          informations fournies par le talent et l’entreprise.
+        </p>
+        <p>
+          Le score sert uniquement à ordonner ou présenter des correspondances. Il n’accepte ni ne refuse
+          automatiquement une candidature et ne remplace pas l’examen humain. Une personne peut demander des
+          explications, signaler une donnée incorrecte ou exercer son droit d’opposition lorsqu’il est applicable en
+          écrivant à l’adresse de contact.
+        </p>
+        <p>
+          Les caractéristiques protégées et les données sensibles ne font pas partie des critères du score. Spotted
+          Talent documente les règles, traite les contestations, surveille les incidents signalés et réévalue les
+          risques avant toute modification susceptible d’influencer matériellement une décision de recrutement.
+        </p>
+      </Section>
+
+      <Section title="6. Documents et données à risque">
+        <p>
+          Une entreprise ne peut demander une pièce que dans le dossier sécurisé d’une candidature acceptée. Les
+          justificatifs de qualification restent limités au diplôme ou certificat nécessaire, au permis de conduire
+          requis, à une habilitation métier ou à une autorisation de travail légalement nécessaire.
+        </p>
+        <p>
+          Pour préparer l’embauche du candidat retenu, ce dossier peut également recevoir une pièce d’identité, un
+          RIB, une attestation de droits à l’Assurance Maladie ou un justificatif de domicile lorsqu’une finalité
+          administrative précise le nécessite. Les demandes de copie de Carte Vitale, photo d’identité générale,
+          copie de casier judiciaire et document administratif libre restent bloquées.
+        </p>
+      </Section>
+
+      <Section title="7. Destinataires">
+        <p>
+          Les données sont accessibles à l’utilisateur concerné et, selon le sens du partage, à l’entreprise partie à
+          la candidature. Les administrateurs chargés de la sécurité peuvent consulter les métadonnées et journaux
+          nécessaires, mais ne disposent pas d’un accès au contenu des fichiers du coffre. Un profil ou un document
+          privé n’est pas rendu public par défaut.
+        </p>
+        <ul className="list-disc space-y-1 pl-6">
+          <li><strong>Supabase</strong> : base, authentification, stockage privé et fonctions serveur ;</li>
+          <li><strong>Vercel</strong> : hébergement de l’application web et journaux techniques ;</li>
+          <li><strong>Stripe</strong> : paiement, abonnement, portail client et factures ;</li>
+          <li><strong>Resend</strong> : courriels transactionnels ;</li>
+          <li><strong>Groq</strong> : traitement IA déclenché par l’utilisateur ;</li>
+          <li><strong>Google</strong> : OAuth si l’utilisateur choisit la connexion Google.</li>
+        </ul>
+      </Section>
+
+      <Section title="8. Transferts hors Espace économique européen">
+        <p>
+          Certains prestataires sont établis ou peuvent traiter des données hors de l’Espace économique européen.
+          Avant le lancement commercial, leurs lieux de traitement, accords de sous-traitance, sous-traitants
+          ultérieurs et garanties de transfert devront être vérifiés et conservés. Selon le prestataire, les garanties
+          peuvent reposer sur une décision d’adéquation ou des clauses contractuelles types.
+        </p>
+      </Section>
+
+      <Section title="9. Durées de conservation">
+        <ul className="list-disc space-y-1 pl-6">
+          <li>compte et profil : pendant l’utilisation du service, puis suppression lors de la suppression du compte sauf obligation contraire ;</li>
+          <li>inactivité : rappels vers 23 et 29 jours, puis suspension à 30 jours ; la suspension ne supprime pas le compte ;</li>
+          <li>document envoyé par un talent à la demande d’une entreprise : suppression du fichier sept jours après la première réception confirmée, ou trente jours après l’envoi sans réception ;</li>
+          <li>contrat, fiche de paie ou document d’intérim envoyé par une entreprise au talent : disponibilité pendant quatre-vingt-dix jours après l’envoi ;</li>
+          <li>métadonnées de transmission : conservation limitée à la traçabilité de la demande, de la réception et de la suppression ;</li>
+          <li>candidatures non retenues : objectif maximal de deux ans après le dernier contact si le talent en a été informé ;</li>
+          <li>messages : durée du dossier de recrutement, puis suppression ou anonymisation avec ce dossier ;</li>
+          <li>factures et pièces comptables : durée légale applicable, généralement dix ans ;</li>
+          <li>journaux de sécurité : durée proportionnée au besoin de preuve et de sécurité, avec purge à formaliser avant production.</li>
+        </ul>
+        <p>
+          Les suppressions documentaires de sept, trente et quatre-vingt-dix jours sont traitées quotidiennement par
+          une fonction serveur. Les autres durées non encore automatisées sont identifiées dans le registre interne.
+        </p>
+      </Section>
+
+      <Section title="10. Intelligence artificielle">
+        <p>
+          L’analyse de CV et la génération de lettres ou d’offres sont facultatives. Seul le contenu nécessaire à la
+          demande est transmis au prestataire IA. Les pièces administratives ne doivent jamais être envoyées à ces
+          fonctions. Les résultats doivent être relus et ne provoquent aucune décision automatique de recrutement.
+        </p>
+        <p>
+          Les fonctions de génération assistent l’utilisateur sans classer ni écarter un candidat. Si un futur cas
+          d’usage entre dans la catégorie des systèmes d’IA à haut risque du règlement (UE) 2024/1689, il ne sera mis
+          en service qu’après l’évaluation, la documentation, les mesures de transparence, la surveillance et le
+          contrôle humain requis pour ce cas d’usage.
+        </p>
+      </Section>
+
+      <Section title="11. Sécurité">
+        <ul className="list-disc space-y-1 pl-6">
+          <li>confirmation de l’adresse électronique et double authentification obligatoire pour les comptes entreprise, facultative pour les talents ;</li>
+          <li>contrôles d’accès par utilisateur, rôle et candidature ;</li>
+          <li>stockage privé, liens temporaires et validation des fichiers ;</li>
+          <li>journalisation des ouvertures, téléchargements et suppressions de documents ;</li>
+          <li>secrets conservés côté serveur et nettoyage planifié des documents arrivés à échéance.</li>
+        </ul>
+      </Section>
+
+      <Section title="12. Vos droits">
+        <p>
+          Selon le traitement, vous pouvez demander l’accès, la rectification, l’effacement, la limitation, la
+          portabilité ou vous opposer au traitement. Vous pouvez également retirer un consentement lorsqu’un traitement
+          repose réellement sur celui-ci, sans remettre en cause ce qui a été fait auparavant.
+        </p>
+        <p>
+          Écrivez à{" "}<a href={`mailto:${SUPPORT_EMAIL}`} className="text-primary hover:underline">{SUPPORT_EMAIL}</a>.
+          Une preuve d’identité limitée au nécessaire pourra être demandée en cas de doute raisonnable. Vous pouvez
+          aussi déposer une réclamation auprès de la{" "}
+          <a href="https://www.cnil.fr/fr/plaintes" target="_blank" rel="noreferrer" className="text-primary hover:underline">CNIL</a>.
+        </p>
+      </Section>
+
+      <Section title="13. Incident de sécurité">
+        <p>
+          Tout incident est analysé, contenu et documenté. La CNIL est notifiée dans les 72 heures lorsque le risque
+          l’exige, et les personnes concernées sont informées lorsque le risque pour leurs droits et libertés est élevé.
+        </p>
+      </Section>
+
+      <Section title="14. Cookies et stockage local">
+        <p>
+          Le site utilise actuellement uniquement les stockages nécessaires à la connexion, à la sécurité, aux
+          préférences d’interface et aux brouillons. Aucun outil publicitaire tiers n’a été détecté dans
+          l’application. Tout futur outil de mesure non exempté sera soumis à une information et à un choix adaptés.
+        </p>
+      </Section>
+
+      <div className="border-t border-border/50 pt-6 text-center text-sm text-muted-foreground">
+        © 2026 Spotted Talent — Politique de confidentialité
+      </div>
+    </main>
+  </div>
+);
 
 export default Confidentialite;

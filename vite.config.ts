@@ -6,11 +6,19 @@ import { componentTagger } from "lovable-tagger";
 // https://vitejs.dev/config/
 export default defineConfig(({ mode }) => ({
   server: {
-    host: "::",
+    // Le serveur de développement reste local : il ne doit pas être exposé
+    // involontairement au réseau de l'entreprise ou du domicile.
+    host: "127.0.0.1",
     port: 8080,
+    strictPort: true,
     hmr: {
       overlay: false,
     },
+  },
+  preview: {
+    host: "127.0.0.1",
+    port: 4173,
+    strictPort: true,
   },
   plugins: [react(), mode === "development" && componentTagger()].filter(Boolean),
   resolve: {

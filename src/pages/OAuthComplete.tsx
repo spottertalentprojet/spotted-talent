@@ -8,6 +8,13 @@ import { TablesInsert, TablesUpdate } from "@/integrations/supabase/types";
 import { ArrowLeft, Building2, Hash, Sparkles } from "lucide-react";
 import { toast } from "sonner";
 import { translateAuthError } from "@/lib/authMessages";
+import LegalAcknowledgementFields from "@/components/LegalAcknowledgementFields";
+import {
+  clearPendingLegalAcknowledgement,
+  hasPendingCurrentLegalAcknowledgement,
+  PRIVACY_NOTICE_VERSION,
+  TERMS_VERSION,
+} from "@/lib/legal";
 
 const OAuthComplete = () => {
   const [params] = useSearchParams();
@@ -15,6 +22,9 @@ const OAuthComplete = () => {
   const [siret, setSiret] = useState("");
   const [loading, setLoading] = useState(false);
   const [syncingProfile, setSyncingProfile] = useState(false);
+  const [legalStatus, setLegalStatus] = useState<"checking" | "required" | "recorded">("checking");
+  const [termsAccepted, setTermsAccepted] = useState(false);
+  const [privacyAcknowledged, setPrivacyAcknowledged] = useState(false);
   const navigate = useNavigate();
   const { user, profile, loading: authLoading } = useAuth();
 
@@ -59,8 +69,64 @@ const OAuthComplete = () => {
   };
 
   useEffect(() => {
+    if (authLoading || !user) return;
+
+    let cancelled = false;
+
+    const checkLegalAcknowledgement = async () => {
+      setLegalStatus("checking");
+
+      const { data, error } = await supabase
+        .from("legal_acknowledgements")
+        .select("id")
+        .eq("user_id", user.id)
+        .eq("terms_version", TERMS_VERSION)
+        .eq("privacy_notice_version", PRIVACY_NOTICE_VERSION)
+        .maybeSingle();
+
+      if (cancelled) return;
+      if (error) {
+        console.error("legal_acknowledgement_check_error", error);
+        setLegalStatus("required");
+        return;
+      }
+
+      if (data) {
+        clearPendingLegalAcknowledgement();
+        setLegalStatus("recorded");
+        return;
+      }
+
+      if (hasPendingCurrentLegalAcknowledgement()) {
+        const { error: recordError } = await supabase.rpc("record_current_legal_acknowledgement", {
+          p_terms_version: TERMS_VERSION,
+          p_privacy_notice_version: PRIVACY_NOTICE_VERSION,
+          p_source: "oauth_completion",
+        });
+
+        if (cancelled) return;
+        if (!recordError) {
+          clearPendingLegalAcknowledgement();
+          setLegalStatus("recorded");
+          return;
+        }
+
+        console.error("legal_acknowledgement_record_error", recordError);
+      }
+
+      setLegalStatus("required");
+    };
+
+    void checkLegalAcknowledgement();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [authLoading, user]);
+
+  useEffect(() => {
     const ensureTalentProfile = async () => {
-      if (authLoading || !user || role !== "talent" || syncingProfile) return;
+      if (authLoading || !user || role !== "talent" || syncingProfile || legalStatus !== "recorded") return;
 
       if (profile?.role === "talent") {
         navigate("/talent/dashboard", { replace: true });
@@ -98,15 +164,38 @@ const OAuthComplete = () => {
     };
 
     void ensureTalentProfile();
-  }, [authLoading, navigate, profile?.role, role, syncingProfile, user]);
+  }, [authLoading, legalStatus, navigate, profile?.role, role, syncingProfile, user]);
 
   useEffect(() => {
-    if (authLoading || !user || role !== "entreprise") return;
+    if (authLoading || !user || role !== "entreprise" || legalStatus !== "recorded") return;
 
     if (profile?.role === "entreprise") {
       navigate("/entreprise/dashboard", { replace: true });
     }
-  }, [authLoading, navigate, profile?.role, role, user]);
+  }, [authLoading, legalStatus, navigate, profile?.role, role, user]);
+
+  const handleLegalAcknowledgement = async (event: React.FormEvent) => {
+    event.preventDefault();
+    if (!user || !termsAccepted || !privacyAcknowledged) return;
+
+    setLoading(true);
+    try {
+      const { error } = await supabase.rpc("record_current_legal_acknowledgement", {
+        p_terms_version: TERMS_VERSION,
+        p_privacy_notice_version: PRIVACY_NOTICE_VERSION,
+        p_source: "oauth_completion",
+      });
+      if (error) throw error;
+
+      clearPendingLegalAcknowledgement();
+      setLegalStatus("recorded");
+      toast.success("Vos choix juridiques ont été enregistrés.");
+    } catch (err: any) {
+      toast.error(translateAuthError(err?.message));
+    } finally {
+      setLoading(false);
+    }
+  };
 
   const handleEntrepriseCompletion = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -192,7 +281,7 @@ const OAuthComplete = () => {
         </div>
 
         <div className="glass-card space-y-4 p-8">
-          {authLoading || syncingProfile ? (
+          {authLoading || syncingProfile || legalStatus === "checking" ? (
             <p className="text-sm text-muted-foreground">Vérification de la connexion en cours...</p>
           ) : !user ? (
             <>
@@ -203,6 +292,29 @@ const OAuthComplete = () => {
                 Retour à la connexion
               </Button>
             </>
+          ) : legalStatus === "required" ? (
+            <form onSubmit={handleLegalAcknowledgement} className="space-y-4">
+              <div>
+                <p className="text-sm font-semibold text-foreground">Une dernière confirmation</p>
+                <p className="mt-1 text-xs leading-5 text-muted-foreground">
+                  Avant de créer l’espace lié à votre compte Google, consultez les textes applicables.
+                </p>
+              </div>
+              <LegalAcknowledgementFields
+                termsAccepted={termsAccepted}
+                privacyAcknowledged={privacyAcknowledged}
+                onTermsAcceptedChange={setTermsAccepted}
+                onPrivacyAcknowledgedChange={setPrivacyAcknowledged}
+                disabled={loading}
+              />
+              <Button
+                variant="glow"
+                className="w-full"
+                disabled={loading || !termsAccepted || !privacyAcknowledged}
+              >
+                {loading ? "Enregistrement..." : "Accepter et continuer"}
+              </Button>
+            </form>
           ) : role === "entreprise" && profile?.role !== "entreprise" ? (
             <form onSubmit={handleEntrepriseCompletion} className="space-y-4">
               <div className="relative">

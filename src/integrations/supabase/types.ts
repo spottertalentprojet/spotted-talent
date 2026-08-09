@@ -87,6 +87,36 @@ export type Database = {
         }
         Relationships: []
       }
+      legal_acknowledgements: {
+        Row: {
+          accepted_at: string
+          created_at: string
+          id: string
+          privacy_notice_version: string
+          source: string
+          terms_version: string
+          user_id: string
+        }
+        Insert: {
+          accepted_at?: string
+          created_at?: string
+          id?: string
+          privacy_notice_version: string
+          source: string
+          terms_version: string
+          user_id: string
+        }
+        Update: {
+          accepted_at?: string
+          created_at?: string
+          id?: string
+          privacy_notice_version?: string
+          source?: string
+          terms_version?: string
+          user_id?: string
+        }
+        Relationships: []
+      }
       account_retention_events: {
         Row: {
           created_at: string
@@ -177,17 +207,31 @@ export type Database = {
           created_at: string
           description: string | null
           diplome: string | null
+          duree_contrat: string | null
+          employer_certification_version: string | null
+          employer_certified_at: string | null
           entreprise_id: string
+          expires_at: string | null
+          experience_requise: string | null
           id: string
           localisation: string | null
+          compliance_version: string | null
+          moderated_at: string | null
+          moderated_by: string | null
+          moderation_reason: string | null
+          moderation_status: string
+          motif_contrat_temporaire: string | null
           permis_requis: string | null
           priority_rank: number
+          public_reference: string | null
           questions_preselection: Json
+          remuneration_periode: string | null
           salaire_max: number | null
           salaire_min: number | null
           secteur: string | null
           statut: string | null
           titre: string
+          updated_at: string
           urgent: boolean | null
         }
         Insert: {
@@ -197,17 +241,31 @@ export type Database = {
           created_at?: string
           description?: string | null
           diplome?: string | null
+          duree_contrat?: string | null
+          employer_certification_version?: string | null
+          employer_certified_at?: string | null
           entreprise_id: string
+          expires_at?: string | null
+          experience_requise?: string | null
           id?: string
           localisation?: string | null
+          compliance_version?: string | null
+          moderated_at?: string | null
+          moderated_by?: string | null
+          moderation_reason?: string | null
+          moderation_status?: string
+          motif_contrat_temporaire?: string | null
           permis_requis?: string | null
           priority_rank?: number
+          public_reference?: string | null
           questions_preselection?: Json
+          remuneration_periode?: string | null
           salaire_max?: number | null
           salaire_min?: number | null
           secteur?: string | null
           statut?: string | null
           titre: string
+          updated_at?: string
           urgent?: boolean | null
         }
         Update: {
@@ -217,17 +275,31 @@ export type Database = {
           created_at?: string
           description?: string | null
           diplome?: string | null
+          duree_contrat?: string | null
+          employer_certification_version?: string | null
+          employer_certified_at?: string | null
           entreprise_id?: string
+          expires_at?: string | null
+          experience_requise?: string | null
           id?: string
           localisation?: string | null
+          compliance_version?: string | null
+          moderated_at?: string | null
+          moderated_by?: string | null
+          moderation_reason?: string | null
+          moderation_status?: string
+          motif_contrat_temporaire?: string | null
           permis_requis?: string | null
           priority_rank?: number
+          public_reference?: string | null
           questions_preselection?: Json
+          remuneration_periode?: string | null
           salaire_max?: number | null
           salaire_min?: number | null
           secteur?: string | null
           statut?: string | null
           titre?: string
+          updated_at?: string
           urgent?: boolean | null
         }
         Relationships: [
@@ -239,6 +311,89 @@ export type Database = {
             referencedColumns: ["user_id"]
           },
         ]
+      }
+      offer_reports: {
+        Row: {
+          created_at: string
+          decision: string | null
+          decision_reason: string | null
+          details: string | null
+          id: string
+          offer_id: string
+          reason: string
+          reporter_id: string
+          resolved_at: string | null
+          reviewed_by: string | null
+          status: string
+          updated_at: string
+        }
+        Insert: {
+          created_at?: string
+          decision?: string | null
+          decision_reason?: string | null
+          details?: string | null
+          id?: string
+          offer_id: string
+          reason: string
+          reporter_id: string
+          resolved_at?: string | null
+          reviewed_by?: string | null
+          status?: string
+          updated_at?: string
+        }
+        Update: {
+          created_at?: string
+          decision?: string | null
+          decision_reason?: string | null
+          details?: string | null
+          id?: string
+          offer_id?: string
+          reason?: string
+          reporter_id?: string
+          resolved_at?: string | null
+          reviewed_by?: string | null
+          status?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "offer_reports_offer_id_fkey"
+            columns: ["offer_id"]
+            isOneToOne: false
+            referencedRelation: "offres"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      offer_moderation_events: {
+        Row: {
+          action: string
+          actor_id: string | null
+          created_at: string
+          id: string
+          offer_id: string
+          reason: string
+          report_id: string | null
+        }
+        Insert: {
+          action: string
+          actor_id?: string | null
+          created_at?: string
+          id?: string
+          offer_id: string
+          reason: string
+          report_id?: string | null
+        }
+        Update: {
+          action?: string
+          actor_id?: string | null
+          created_at?: string
+          id?: string
+          offer_id?: string
+          reason?: string
+          report_id?: string | null
+        }
+        Relationships: []
       }
       saved_offers: {
         Row: {
@@ -332,6 +487,11 @@ export type Database = {
           id: string
           requested_at: string
           requested_by: string
+          receipt_confirmed_at: string | null
+          received_at: string | null
+          retention_expires_at: string | null
+          storage_deleted_at: string | null
+          deletion_reason: string | null
           status: string
           storage_path: string | null
           talent_id: string
@@ -347,6 +507,11 @@ export type Database = {
           id?: string
           requested_at?: string
           requested_by: string
+          receipt_confirmed_at?: string | null
+          received_at?: string | null
+          retention_expires_at?: string | null
+          storage_deleted_at?: string | null
+          deletion_reason?: string | null
           status?: string
           storage_path?: string | null
           talent_id: string
@@ -362,6 +527,11 @@ export type Database = {
           id?: string
           requested_at?: string
           requested_by?: string
+          receipt_confirmed_at?: string | null
+          received_at?: string | null
+          retention_expires_at?: string | null
+          storage_deleted_at?: string | null
+          deletion_reason?: string | null
           status?: string
           storage_path?: string | null
           talent_id?: string
@@ -398,6 +568,99 @@ export type Database = {
           },
         ]
       }
+      platform_security_state: {
+        Row: {
+          activated_at: string | null
+          activated_by: string | null
+          auto_triggered: boolean
+          documents_locked: boolean
+          id: boolean
+          incident_mode: boolean
+          public_message: string
+          reason: string | null
+          sensitive_writes_locked: boolean
+          severity: string
+          updated_at: string
+        }
+        Insert: {
+          activated_at?: string | null
+          activated_by?: string | null
+          auto_triggered?: boolean
+          documents_locked?: boolean
+          id?: boolean
+          incident_mode?: boolean
+          public_message?: string
+          reason?: string | null
+          sensitive_writes_locked?: boolean
+          severity?: string
+          updated_at?: string
+        }
+        Update: {
+          activated_at?: string | null
+          activated_by?: string | null
+          auto_triggered?: boolean
+          documents_locked?: boolean
+          id?: boolean
+          incident_mode?: boolean
+          public_message?: string
+          reason?: string | null
+          sensitive_writes_locked?: boolean
+          severity?: string
+          updated_at?: string
+        }
+        Relationships: []
+      }
+      security_incidents: {
+        Row: {
+          actor_id: string | null
+          auto_lock_applied: boolean
+          contained_at: string | null
+          created_at: string
+          created_by: string | null
+          details: Json
+          detected_at: string
+          id: string
+          incident_type: string
+          resolved_at: string | null
+          severity: string
+          source: string
+          status: string
+          summary: string
+        }
+        Insert: {
+          actor_id?: string | null
+          auto_lock_applied?: boolean
+          contained_at?: string | null
+          created_at?: string
+          created_by?: string | null
+          details?: Json
+          detected_at?: string
+          id?: string
+          incident_type: string
+          resolved_at?: string | null
+          severity: string
+          source: string
+          status?: string
+          summary: string
+        }
+        Update: {
+          actor_id?: string | null
+          auto_lock_applied?: boolean
+          contained_at?: string | null
+          created_at?: string
+          created_by?: string | null
+          details?: Json
+          detected_at?: string
+          id?: string
+          incident_type?: string
+          resolved_at?: string | null
+          severity?: string
+          source?: string
+          status?: string
+          summary?: string
+        }
+        Relationships: []
+      }
       document_encryption_keys: {
         Row: {
           algorithm: string
@@ -405,15 +668,23 @@ export type Database = {
           created_at: string
           created_by: string
           document_request_id: string | null
+          deletion_reason: string | null
           encrypted_size_bytes: number | null
-          expires_at: string
-          iv_b64: string
-          key_b64: string
+          expires_at: string | null
+          first_downloaded_at: string | null
+          iv_b64: string | null
+          key_b64: string | null
           original_file_name: string
           original_mime_type: string | null
           original_size_bytes: number | null
           owner_id: string
+          receipt_confirmed_at: string | null
+          received_at: string | null
+          recipient_id: string | null
           relation_id: string | null
+          retention_flow: string
+          sent_at: string
+          storage_deleted_at: string | null
           storage_path: string
         }
         Insert: {
@@ -422,15 +693,23 @@ export type Database = {
           created_at?: string
           created_by?: string
           document_request_id?: string | null
+          deletion_reason?: string | null
           encrypted_size_bytes?: number | null
-          expires_at?: string
-          iv_b64: string
-          key_b64: string
+          expires_at?: string | null
+          first_downloaded_at?: string | null
+          iv_b64: string | null
+          key_b64: string | null
           original_file_name: string
           original_mime_type?: string | null
           original_size_bytes?: number | null
           owner_id: string
+          receipt_confirmed_at?: string | null
+          received_at?: string | null
+          recipient_id?: string | null
           relation_id?: string | null
+          retention_flow?: string
+          sent_at?: string
+          storage_deleted_at?: string | null
           storage_path: string
         }
         Update: {
@@ -439,15 +718,23 @@ export type Database = {
           created_at?: string
           created_by?: string
           document_request_id?: string | null
+          deletion_reason?: string | null
           encrypted_size_bytes?: number | null
-          expires_at?: string
-          iv_b64?: string
-          key_b64?: string
+          expires_at?: string | null
+          first_downloaded_at?: string | null
+          iv_b64?: string | null
+          key_b64?: string | null
           original_file_name?: string
           original_mime_type?: string | null
           original_size_bytes?: number | null
           owner_id?: string
+          receipt_confirmed_at?: string | null
+          received_at?: string | null
+          recipient_id?: string | null
           relation_id?: string | null
+          retention_flow?: string
+          sent_at?: string
+          storage_deleted_at?: string | null
           storage_path?: string
         }
         Relationships: [
@@ -561,6 +848,8 @@ export type Database = {
           addon_ids: string[]
           amount_ttc_cents: number | null
           billing_cycle: string
+          cgv_accepted_at: string | null
+          cgv_version: string | null
           created_at: string
           id: string
           plan_id: string
@@ -573,6 +862,8 @@ export type Database = {
           addon_ids?: string[]
           amount_ttc_cents?: number | null
           billing_cycle?: string
+          cgv_accepted_at?: string | null
+          cgv_version?: string | null
           created_at?: string
           id?: string
           plan_id: string
@@ -585,6 +876,8 @@ export type Database = {
           addon_ids?: string[]
           amount_ttc_cents?: number | null
           billing_cycle?: string
+          cgv_accepted_at?: string | null
+          cgv_version?: string | null
           created_at?: string
           id?: string
           plan_id?: string
@@ -725,6 +1018,64 @@ export type Database = {
       [_ in never]: never
     }
     Functions: {
+      admin_decide_offer_report: {
+        Args: {
+          p_decision: string
+          p_reason: string
+          p_report_id: string
+        }
+        Returns: Json
+      }
+      get_platform_security_status: {
+        Args: Record<PropertyKey, never>
+        Returns: {
+          activated_at: string | null
+          auto_triggered: boolean
+          documents_locked: boolean
+          incident_mode: boolean
+          public_message: string
+          sensitive_writes_locked: boolean
+          severity: string
+          updated_at: string
+        }[]
+      }
+      platform_admin_has_mfa: {
+        Args: Record<PropertyKey, never>
+        Returns: boolean
+      }
+      platform_documents_available: {
+        Args: Record<PropertyKey, never>
+        Returns: boolean
+      }
+      set_platform_incident_mode: {
+        Args: {
+          p_documents_locked: boolean
+          p_incident_mode: boolean
+          p_reason: string
+          p_sensitive_writes_locked: boolean
+        }
+        Returns: {
+          activated_at: string | null
+          activated_by: string | null
+          auto_triggered: boolean
+          documents_locked: boolean
+          id: boolean
+          incident_mode: boolean
+          public_message: string
+          reason: string | null
+          sensitive_writes_locked: boolean
+          severity: string
+          updated_at: string
+        }[]
+      }
+      record_current_legal_acknowledgement: {
+        Args: {
+          p_privacy_notice_version: string
+          p_source?: string
+          p_terms_version: string
+        }
+        Returns: string
+      }
       get_matching_talent_email_recipients_for_offer: {
         Args: {
           p_offre_id: string
@@ -745,13 +1096,36 @@ export type Database = {
         }
         Returns: undefined
       }
-      cleanup_expired_documents: {
+      record_document_receipt: {
         Args: {
-          p_now?: string
+          p_receipt_method?: string
+          p_storage_path: string
+        }
+        Returns: string | null
+      }
+      record_manual_document_deletion: {
+        Args: {
+          p_storage_path: string
+        }
+        Returns: undefined
+      }
+      list_candidature_document_records: {
+        Args: {
+          p_candidature_id: string
         }
         Returns: {
+          category: string
+          deletion_reason: string | null
+          document_request_id: string | null
+          expires_at: string | null
+          original_file_name: string
+          owner_id: string
+          received_at: string | null
+          recipient_id: string | null
+          retention_flow: string
+          sent_at: string
+          storage_deleted_at: string | null
           storage_path: string
-          deleted_reason: string
         }[]
       }
       touch_account_activity: {

@@ -21,6 +21,14 @@ const faqs = [
     q: "Puis-je l'utiliser pour recruter ?",
     a: "Oui. L'espace entreprise permet de publier des offres, suivre les candidatures, échanger des messages et gérer les documents.",
   },
+  {
+    q: "Combien de temps un document demandé à un talent reste-t-il disponible ?",
+    a: "Quand une entreprise télécharge le document ou confirme sa réception, un délai de sécurité de 7 jours commence avant la suppression du fichier. Sans téléchargement ni confirmation, le fichier est supprimé automatiquement 30 jours après son envoi. La demande et ses dates restent enregistrées pour assurer la traçabilité.",
+  },
+  {
+    q: "Combien de temps un contrat ou une fiche de paie reçu reste-t-il disponible ?",
+    a: "Un contrat, une fiche de paie ou un document d’intérim transmis par une entreprise reste accessible au talent pendant 90 jours. Spotted Talent sert uniquement de passerelle de transmission : le talent doit télécharger sa copie ou peut redemander le document à son employeur. Après l’envoi, l’entreprise ne peut plus ouvrir ni retélécharger le fichier depuis Spotted Talent.",
+  },
 ];
 
 const FAQ = () => (

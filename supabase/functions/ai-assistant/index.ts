@@ -119,23 +119,53 @@ const redactCvContactDetails = (value: string) =>
     .replace(/[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}/gi, "[email masque]")
     .replace(/(?:\+33|0)[1-9](?:[ .-]?\d{2}){4}/g, "[telephone masque]");
 
+const normalizeOfferText = (value: string) => value
+  .normalize("NFD")
+  .replace(/[\u0300-\u036f]/g, "")
+  .toLowerCase()
+  .replace(/[’']/g, "'")
+  .replace(/\s+/g, " ")
+  .trim();
+
+const generatedOfferIsUnsafe = (value: string) => {
+  const normalized = normalizeOfferText(value);
+  const forbiddenPatterns = [
+    /\b(?:hommes?|femmes?)\s+uniquement\b|\breserve(?:e|es|s)?\s+aux?\s+(?:hommes?|femmes?)\b/u,
+    /\b(?:moins de|maximum|max\.?|age maximum)\s+\d{2}\s+ans\b/u,
+    /\b(?:sans enfant|celibataire uniquement|mariee? uniquement)\b/u,
+    /\b(?:nationalite francaise obligatoire|francais de souche|sans handicap)\b/u,
+    /\b(?:frais de candidature|payer pour postuler|paiement pour postuler)\b/u,
+    /(?:^|\D)0(?:81|82|89)\d(?:[ .-]?\d{2}){3}(?:\D|$)/u,
+  ];
+  return forbiddenPatterns.some((pattern) => pattern.test(normalized)) ||
+    /[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}/i.test(value);
+};
+
 const buildPrompt = (task: AiTask, payload: Record<string, unknown>) => {
   if (task === "generate_offer") {
     const poste = toText(payload.poste, 160);
     if (!poste) throw new Error("missing_job_title");
     const entreprise = toText(payload.entreprise, 180);
     const contrat = toText(payload.contrat, 80);
-    const localisation = toText(payload.localisation, 180) || "France";
+    const localisation = toText(payload.localisation, 180);
     const secteur = toText(payload.secteur, 160);
-    const competences = toText(payload.competences, 1200) || "a definir";
+    const competences = toText(payload.competences, 1200);
     const besoin = toText(payload.besoin, 1600);
     const experience = toText(payload.experience, 120);
+    const dureeContrat = toText(payload.dureeContrat, 160);
+    const motifContratTemporaire = toText(payload.motifContratTemporaire, 300);
     const diplome = toText(payload.diplome, 160);
     const salaireMin = toText(payload.salaireMin, 30);
     const salaireMax = toText(payload.salaireMax, 30);
+    const remunerationPeriode = toText(payload.remunerationPeriode, 30);
     const avantages = Array.isArray(payload.avantages)
       ? payload.avantages.map((item) => toText(item, 80)).filter(Boolean).slice(0, 12).join(", ")
       : "";
+    const allowedContracts = ["CDI", "CDD", "Intérim", "Alternance", "Stage"];
+    if (!allowedContracts.includes(contrat) || !localisation || !secteur || !experience) throw new Error("missing_offer_facts");
+    if (["CDD", "Intérim", "Alternance", "Stage"].includes(contrat) && !dureeContrat) throw new Error("missing_temporary_contract_duration");
+    if (contrat === "CDD" && !motifContratTemporaire) throw new Error("missing_temporary_contract_reason");
+    if (Boolean(salaireMin) !== Boolean(salaireMax) || (salaireMin && !remunerationPeriode)) throw new Error("invalid_salary_range");
     const permisRequis = Array.isArray(payload.permisRequis)
       ? payload.permisRequis.map((item) => toText(item, 80)).filter(Boolean).slice(0, 12).join(", ")
       : "";
@@ -146,23 +176,23 @@ const buildPrompt = (task: AiTask, payload: Record<string, unknown>) => {
       messages: [
         {
           role: "system",
-          content: "Tu es un expert RH francophone. Tu rediges des annonces courtes, humaines, professionnelles et faciles a parcourir sur mobile. N'invente aucune information absente des donnees du recruteur.",
+          content: "Tu es un expert RH francophone. Tu rediges des annonces courtes, humaines, inclusives, professionnelles et faciles a parcourir sur mobile. N'invente jamais un contrat, une duree, un motif, une remuneration, un diplome, une experience, une competence, un avantage ou une contrainte absente des donnees du recruteur. Tu n'introduis aucun critere discriminatoire et tu ne prends jamais de decision de recrutement.",
         },
         {
           role: "user",
           content:
             `Redige le corps d'une offre d'emploi pour le poste de ${poste}${entreprise ? ` chez ${entreprise}` : ""}. ` +
-            `Contrat: ${contrat || "a definir"}. Localisation: ${localisation}. Secteur: ${secteur || "a definir"}. ` +
-            `Besoin exprime par le recruteur: ${besoin || "non precise"}. Experience attendue: ${experience || "non precisee"}. ` +
-            `Competences: ${competences}. Diplome requis: ${diplome || "non precise"}. Permis et habilitations: ${permisRequis || "non precises"}. ` +
-            `Salaire: ${salaireMin && salaireMax ? `${salaireMin} EUR a ${salaireMax} EUR brut/mois` : "non precise"}. ` +
+            `Contrat: ${contrat}. Duree: ${dureeContrat || "non applicable"}. Motif du contrat temporaire: ${motifContratTemporaire || "non applicable"}. Localisation: ${localisation}. Secteur: ${secteur}. ` +
+            `Besoin exprime par le recruteur: ${besoin || "non precise"}. Experience attendue: ${experience}. ` +
+            `Competences: ${competences || "non precisees"}. Diplome requis: ${diplome || "non precise"}. Permis et habilitations: ${permisRequis || "non precises"}. ` +
+            `Remuneration: ${salaireMin && salaireMax ? `${salaireMin} EUR a ${salaireMax} EUR brut ${remunerationPeriode}` : "non precisee"}. ` +
             `Avantages: ${avantages || "non precises"}. ` +
             `Respecte exactement ce format en texte simple:\n\n` +
             `À propos du poste\nUn paragraphe de 2 ou 3 phrases maximum.\n\n` +
             `Vos missions\n• 3 a 5 missions courtes, une par ligne.\n\n` +
             `Profil recherché\n• 3 a 5 criteres reels, une par ligne.\n\n` +
             `Ce que nous proposons\n• Uniquement le contrat, le salaire et les avantages effectivement fournis.\n\n` +
-            `Contraintes obligatoires: 220 mots maximum, phrases courtes, aucun emoji, aucun tableau, aucun separateur, aucun titre de poste, aucune repetition des coordonnees, aucune adresse email, aucune consigne pour postuler et aucune formule marketing exageree. Si une information n'est pas fournie, ne la mentionne pas.`,
+            `Contraintes obligatoires: 220 mots maximum, phrases courtes, francais clair, intitulé inclusif, aucun emoji, aucun tableau, aucun separateur, aucun titre de poste, aucune coordonnee, aucun numero de telephone, aucune adresse email, aucune consigne externe ou payante pour postuler, aucun critere lie au sexe, a l'age, a l'origine, a la situation familiale, a la sante ou au handicap, et aucune formule marketing exageree. Si une information n'est pas fournie, ne la mentionne pas. La candidature se fait gratuitement sur Spotted Talent.`,
         },
       ] satisfies ChatMessage[],
     };
@@ -383,6 +413,10 @@ serve(async (req) => {
   const content = groqData?.choices?.[0]?.message?.content;
   if (!content || typeof content !== "string") {
     return jsonResponse(502, { error: "ai_response_invalid" });
+  }
+
+  if (body.task === "generate_offer" && generatedOfferIsUnsafe(content)) {
+    return jsonResponse(422, { error: "generated_offer_failed_compliance_check" });
   }
 
   return jsonResponse(200, { ok: true, content });

@@ -16,9 +16,10 @@ const ResetPassword = () => {
   const navigate = useNavigate();
   const { session, loading: authLoading } = useAuth();
 
-  const role = params.get("role") === "entreprise" ? "entreprise" : "talent";
-  const backPath = role === "entreprise" ? "/entreprise/connexion" : "/talent";
-  const successPath = role === "entreprise" ? "/entreprise/dashboard" : "/talent/dashboard";
+  const roleParam = params.get("role");
+  const role = roleParam === "entreprise" ? "entreprise" : roleParam === "admin" ? "admin" : "talent";
+  const backPath = role === "admin" ? "/admin" : role === "entreprise" ? "/entreprise/connexion" : "/talent";
+  const successPath = role === "admin" ? "/admin" : role === "entreprise" ? "/entreprise/dashboard" : "/talent/dashboard";
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();

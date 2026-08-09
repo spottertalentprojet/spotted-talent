@@ -1,6 +1,8 @@
 # Registre RGPD interne - Spotted Talent
 
-Date de mise à jour : 26 juillet 2026
+Date de mise à jour : 9 août 2026
+
+Statut : registre de travail à finaliser, dater et valider avant l'ouverture commerciale.
 
 Ce document sert de registre interne des traitements de données personnelles pour Spotted Talent. Il est préparé pour faciliter une relecture par un professionnel RGPD, DPO ou juriste avant commercialisation.
 
@@ -11,10 +13,18 @@ Références utiles :
 
 ## Responsable du traitement
 
-Responsable : Spotted Talent  
+Responsable : Yousri Frigui, entrepreneur individuel, exerçant sous le nom commercial Spotted Talent
+
+SIREN : 838 378 156
+
+SIRET de l'établissement principal : 838 378 156 00023
+
+Immatriculation au RNE : 5 août 2026
+
+Code APE : 6201Z - Programmation informatique
 Site : https://www.spottedtalent.fr  
 Contact RGPD : contact@spottedtalent.fr  
-Adresse indiquée sur le site : La Ravoire, 73490, France
+Adresse indiquée sur le site : 6 R du Pre Hibou, 73490 La Ravoire, France
 
 ## Traitement 1 - Gestion des comptes utilisateurs
 
@@ -210,10 +220,10 @@ Personnes concernées :
 Données traitées :
 - CV ;
 - lettre de motivation ;
-- pièce d'identité ;
-- RIB ;
-- permis ;
-- carte vitale ou document administratif demandé ;
+- diplôme ou certification nécessaire au poste ;
+- permis de conduire requis ;
+- habilitation ou permis métier ;
+- autorisation de travail lorsque la vérification est légalement nécessaire ;
 - contrats, paies, documents d'intérim ;
 - nom de fichier ;
 - chemin de stockage ;
@@ -231,7 +241,9 @@ Base légale à valider :
 - minimisation stricte pour les pièces sensibles.
 
 Durée de conservation :
-- documents sensibles demandés : suppression automatique possible après 30 jours ;
+- documents sensibles transmis par le talent : fichier supprimé 7 jours après la première réception confirmée par l'entreprise, ou 30 jours après l'envoi sans réception ;
+- contrats, fiches de paie et documents d'intérim transmis au talent : fichier supprimé 90 jours après l'envoi ;
+- métadonnées de demande, transmission, réception et suppression : conservées séparément pour la traçabilité ;
 - documents personnels : conservés tant que le compte est actif, sauf demande de suppression ;
 - documents de facturation ou obligations légales : durée légale applicable.
 
@@ -241,10 +253,13 @@ Mesures de sécurité :
 - journalisation des accès ;
 - chiffrement applicatif des nouveaux documents sensibles lorsque disponible ;
 - nettoyage automatique par fonction serveur via Storage API ;
+- retrait immédiat de l'accès de l'entreprise au contenu après une remise entreprise vers talent ;
+- absence d'accès administrateur au contenu des fichiers, avec accès limité aux métadonnées de sécurité ;
 - suppression directe des tables de stockage interdite.
 
 Point à valider :
-- définir précisément quels documents peuvent être demandés et à quel moment, surtout pièce d'identité, RIB et carte vitale.
+- créer un parcours d'embauche distinct avant toute éventuelle collecte de pièce d'identité, RIB ou document social ;
+- ne pas conserver de copie de casier judiciaire dans le parcours standard.
 
 ## Traitement 7 - Paiements, abonnements et factures
 
@@ -330,6 +345,11 @@ Finalités :
 - générer une lettre de motivation ;
 - aider à rédiger une offre d'emploi.
 
+Qualification actuelle :
+- le score de matching est déterministe et n'utilise pas de modèle d'IA ;
+- les fonctions d'IA génèrent ou analysent un contenu à la demande mais ne prennent aucune décision de recrutement ;
+- toute évolution influençant une présélection ou une évaluation impose une nouvelle qualification au regard du règlement (UE) 2024/1689 avant mise en service.
+
 Base légale à valider :
 - action volontaire de l'utilisateur ;
 - exécution du service ;
@@ -376,6 +396,35 @@ Mesures de sécurité :
 - accès restreint ;
 - procédure de violation de données.
 
+## Traitement 11 - Preuve d'acceptation des textes
+
+Personnes concernées :
+- talents ;
+- entreprises.
+
+Données traitées :
+- identifiant du compte ;
+- version des CGU acceptée ;
+- version de la politique de confidentialité présentée ;
+- version des CGV acceptée avant une commande Entreprise ;
+- date et heure serveur ;
+- source de l'inscription : e-mail ou OAuth.
+
+Finalités :
+- prouver l'acceptation des CGU ;
+- prouver que l'information RGPD a été présentée ;
+- prouver l'acceptation des conditions commerciales attachées à une commande ;
+- demander une nouvelle validation après une évolution importante des textes.
+
+Base légale à valider :
+- exécution du contrat ;
+- intérêt légitime de preuve et de conformité.
+
+Mesures de sécurité :
+- écriture réservée à une fonction serveur ou au déclencheur d'inscription ;
+- lecture limitée au titulaire du compte ;
+- aucune adresse IP brute enregistrée par ce mécanisme.
+
 ## Points à faire valider
 
 - Statut exact de Spotted Talent : responsable de traitement, sous-traitant, ou les deux selon les cas.
@@ -385,3 +434,4 @@ Mesures de sécurité :
 - Encadrement des documents sensibles et données pouvant relever d'une attention particulière.
 - Contrats de sous-traitance et transferts hors UE.
 - Processus opérationnel de réponse aux demandes RGPD.
+- Analyse d'impact préparatoire : `docs/rgpd/aipd-recrutement-matching.md`.

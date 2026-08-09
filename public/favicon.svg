@@ -1,0 +1,16 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" role="img" aria-labelledby="title">
+  <title>Spotted Talent</title>
+  <defs>
+    <linearGradient id="brand" x1="72" y1="52" x2="440" y2="468" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#7C3AED"/>
+      <stop offset=".52" stop-color="#5B36D8"/>
+      <stop offset="1" stop-color="#38209C"/>
+    </linearGradient>
+    <filter id="shadow" x="-30%" y="-30%" width="160%" height="160%">
+      <feDropShadow dx="0" dy="10" stdDeviation="12" flood-color="#20105F" flood-opacity=".28"/>
+    </filter>
+  </defs>
+  <rect x="28" y="28" width="456" height="456" rx="140" fill="url(#brand)"/>
+  <path filter="url(#shadow)" fill="#fff" d="M256 87c11 88 29 118 108 169-79 51-97 81-108 169-11-88-29-118-108-169 79-51 97-81 108-169Zm0 69c-9 54-25 78-67 100 42 22 58 46 67 100 9-54 25-78 67-100-42-22-58-46-67-100Z"/>
+  <circle cx="389" cy="138" r="19" fill="#C4B5FD" opacity=".95"/>
+</svg>

@@ -21,6 +21,7 @@ type ExpiredDocument = {
   document_request_id: string | null;
   original_file_name: string | null;
   expires_at: string | null;
+  retention_flow: string | null;
 };
 
 serve(async (req) => {
@@ -52,7 +53,8 @@ serve(async (req) => {
 
   const { data: expiredDocuments, error: selectError } = await admin
     .from("document_encryption_keys")
-    .select("storage_path, owner_id, category, relation_id, document_request_id, original_file_name, expires_at")
+    .select("storage_path, owner_id, category, relation_id, document_request_id, original_file_name, expires_at, retention_flow")
+    .is("storage_deleted_at", null)
     .not("expires_at", "is", null)
     .lte("expires_at", new Date().toISOString())
     .limit(500);
@@ -81,43 +83,28 @@ serve(async (req) => {
     return jsonResponse(500, { error: "storage_delete_failed", details: storageError.message });
   }
 
-  const logs = documents.map((doc) => ({
-    actor_id: doc.owner_id,
-    action: "delete",
-    storage_path: doc.storage_path,
-    owner_id: doc.owner_id,
-    category: doc.category,
-    relation_id: doc.relation_id,
-    document_request_id: doc.document_request_id,
-    file_name: doc.original_file_name,
-    metadata: {
-      reason: "retention_expired",
-      deleted_by: "system",
-      expires_at: doc.expires_at,
-      method: "storage_api",
+  const deletedAt = new Date().toISOString();
+  const { data: finalizedDocuments, error: finalizeError } = await admin.rpc(
+    "finalize_expired_document_deletions",
+    {
+      p_storage_paths: paths,
+      p_deleted_at: deletedAt,
     },
-  }));
+  );
 
-  const { error: logError } = await admin
-    .from("document_access_logs")
-    .insert(logs);
-
-  if (logError) {
-    return jsonResponse(500, { error: "retention_log_failed", details: logError.message });
-  }
-
-  const { error: deleteKeysError } = await admin
-    .from("document_encryption_keys")
-    .delete()
-    .in("storage_path", paths);
-
-  if (deleteKeysError) {
-    return jsonResponse(500, { error: "metadata_delete_failed", details: deleteKeysError.message });
+  if (finalizeError) {
+    return jsonResponse(500, {
+      error: "retention_finalize_failed",
+      details: finalizeError.message,
+      storage_deleted: paths.length,
+    });
   }
 
   return jsonResponse(200, {
     ok: true,
-    deleted: paths.length,
+    storage_deleted: paths.length,
+    metadata_finalized: finalizedDocuments?.length || 0,
     checked: documents.length,
+    deleted_at: deletedAt,
   });
 });

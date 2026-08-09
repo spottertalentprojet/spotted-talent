@@ -1,7 +1,7 @@
 import { Link } from "react-router-dom";
 import { Button } from "@/components/ui/button";
 import ThemeToggle from "@/components/ThemeToggle";
-import { Sparkles, Check, Wand2, Users, BarChart3, MessageSquare, Zap, Shield, ArrowRight, TrendingUp } from "lucide-react";
+import { Sparkles, Check, Wand2, Users, BarChart3, MessageSquare, Zap, Shield, ArrowRight } from "lucide-react";
 import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from "@/components/ui/accordion";
 
 const plans = [
@@ -33,18 +33,18 @@ const plans = [
 
 const features = [
   { icon: Wand2, title: "Offres générées par IA", desc: "Créez des offres d'emploi professionnelles en quelques secondes grâce à notre IA." },
-  { icon: Users, title: "Matching intelligent", desc: "Notre algorithme trouve automatiquement les meilleurs talents pour vos postes." },
+  { icon: Users, title: "Matching par critères", desc: "Un score indicatif rapproche secteur, contrat, localisation, compétences et permis, sans décision automatique." },
   { icon: BarChart3, title: "Dashboard analytique", desc: "Suivez vos recrutements en temps réel avec des statistiques détaillées." },
   { icon: MessageSquare, title: "Messagerie intégrée", desc: "Communiquez directement avec les candidats depuis votre espace entreprise." },
-  { icon: Zap, title: "Recrutement rapide", desc: "Réduisez votre temps de recrutement de 60% grâce à nos outils IA." },
-  { icon: Shield, title: "Données sécurisées", desc: "Vos données et celles de vos candidats sont protégées et conformes au RGPD." },
+  { icon: Zap, title: "Parcours centralisé", desc: "Regroupez offres, candidatures, échanges et documents dans un seul espace." },
+  { icon: Shield, title: "Protection intégrée", desc: "Accès contrôlés, stockage privé, liens temporaires et journalisation des documents." },
 ];
 
 const stats = [
-  { value: "60%", label: "Temps de recrutement réduit" },
-  { value: "1 000+", label: "Entreprises utilisatrices" },
-  { value: "98%", label: "Satisfaction client" },
-  { value: "30s", label: "Pour créer une offre IA" },
+  { value: "30 j", label: "d’essai avant le premier débit" },
+  { value: "220", label: "mots maximum par offre IA" },
+  { value: "5", label: "critères de rapprochement" },
+  { value: "100 %", label: "des décisions restent humaines" },
 ];
 
 const comparison = [
@@ -57,15 +57,15 @@ const comparison = [
 const faqsEntreprise = [
   {
     q: "Qu'est-ce que Spotted Talent apporte de plus ?",
-    a: "Les plateformes classiques affichent des CV sans les analyser et vous laissent trier seul des dizaines de candidatures peu qualifiées. Spotted Talent analyse chaque profil par IA, génère vos offres en quelques secondes, matche candidats et postes dans les deux sens en temps réel, et centralise tous vos documents en un seul endroit. Résultat : moins de temps perdu, des candidatures vraiment utiles, et un recrutement jusqu'à 60% plus rapide.",
+    a: "Spotted Talent centralise les offres, les candidatures, les échanges et les documents. L’IA intervient uniquement dans les fonctions de rédaction ou d’analyse déclenchées par l’utilisateur. Le matching, lui, repose actuellement sur des critères déclarés et reste indicatif.",
   },
   {
-    q: "Comment fonctionne le matching IA ?",
-    a: "Notre algorithme analyse le profil complet du candidat (compétences, expérience, secteur, permis, disponibilité) et le compare à vos critères de poste. Le score de matching vous permet de visualiser en un coup d'œil les meilleurs candidats sans lire 50 CV.",
+    q: "Comment fonctionne le score de matching ?",
+    a: "Le score compare cinq critères déclarés : secteur, contrat, localisation, compétences et permis. Il sert à présenter des correspondances mais ne refuse ni n’accepte automatiquement une candidature. La décision reste humaine.",
   },
   {
-    q: "Est-ce conforme au RGPD ?",
-    a: "Oui. Toutes les données sont hébergées en Europe. Les candidats peuvent demander la suppression de leurs données à tout moment. Vous en tant qu'entreprise avez accès uniquement aux profils qui ont consenti à être contactés.",
+    q: "Comment les données sont-elles protégées ?",
+    a: "Le produit utilise des accès par rôle, un stockage documentaire privé, des liens temporaires et des journaux d’accès. La documentation RGPD et les contrats des prestataires sont en cours de finalisation avant la commercialisation.",
   },
   {
     q: "Comment gérer les documents avec les candidats ?",
@@ -81,7 +81,7 @@ const faqsEntreprise = [
   },
   {
     q: "Combien de temps pour être opérationnel ?",
-    a: "Moins de 5 minutes. Créez votre compte, complétez votre profil entreprise et publiez votre première offre. Pas d'installation, pas de formation, tout fonctionne depuis votre navigateur.",
+    a: "Le parcours vous guide de la création du compte jusqu’à la première annonce. Aucun logiciel n’est à installer : le profil, la facturation et les offres sont gérés depuis le navigateur.",
   },
   {
     q: "Y a-t-il un engagement minimum ?",
@@ -94,18 +94,18 @@ const EntrepriseLanding = () => {
     <div className="min-h-screen bg-background">
 
       <nav className="fixed left-0 right-0 top-0 z-50 border-b border-border/50 bg-background/70 backdrop-blur-xl">
-        <div className="mx-auto flex h-16 max-w-7xl items-center justify-between px-4 sm:px-6 lg:px-8">
-          <a href="/" className="flex items-center gap-2 text-xl font-bold">
-            <Sparkles className="h-6 w-6 text-primary" />
+        <div className="mx-auto flex h-16 max-w-7xl items-center justify-between px-3 sm:px-6 lg:px-8">
+          <a href="/" className="flex items-center gap-1.5 whitespace-nowrap text-base font-bold sm:gap-2 sm:text-xl">
+            <Sparkles className="h-5 w-5 text-primary sm:h-6 sm:w-6" />
             <span className="gradient-text">Spotted Talent</span>
           </a>
-          <div className="flex items-center gap-4">
+          <div className="flex items-center gap-2 sm:gap-4">
             <ThemeToggle />
             <a href="/" className="hidden text-sm text-muted-foreground transition-colors hover:text-foreground sm:block">
               Retour à l'accueil
             </a>
             <Link to="/entreprise/connexion">
-              <Button variant="glow" size="sm">Se connecter</Button>
+              <Button variant="glow" size="sm" className="px-3 sm:px-4">Se connecter</Button>
             </Link>
           </div>
         </div>
@@ -121,20 +121,20 @@ const EntrepriseLanding = () => {
             <div>
               <div className="mb-6 inline-flex items-center gap-2 rounded-full border border-accent/30 bg-accent/10 px-3 py-1.5 text-xs font-medium text-accent">
                 <Sparkles className="h-3 w-3" />
-                Plateforme de recrutement par IA
+                Du besoin au dossier candidat
               </div>
-              <h1 className="mb-5 text-5xl font-bold leading-[1.1] sm:text-6xl">
-                Plus de qualité.<br />
-                Plus de valeur.<br />
-                <span className="gradient-text">Moins de tri inutile.</span>
+              <h1 className="mb-5 text-4xl font-bold leading-[1.1] min-[420px]:text-5xl sm:text-6xl">
+                Des offres claires.<br />
+                Des candidatures suivies.<br />
+                <span className="gradient-text">Un seul espace.</span>
               </h1>
               <p className="mb-8 max-w-lg text-lg leading-relaxed text-muted-foreground">
-                Spotted Talent aide les entreprises à recevoir des candidatures plus pertinentes et mieux qualifiées — sans se noyer dans le volume.
+                Rédigez une annonce courte avec l’IA, suivez chaque candidature et échangez les documents utiles sans disperser votre recrutement entre plusieurs outils.
               </p>
               <div className="mb-10 flex flex-col gap-3 sm:flex-row">
                 <Link to="/entreprise/connexion">
                   <Button variant="glow" size="lg" className="w-full gap-2 px-8 sm:w-auto">
-                    Commencer gratuitement
+                    Essayer pendant 30 jours
                     <ArrowRight className="h-4 w-4" />
                   </Button>
                 </Link>
@@ -145,7 +145,7 @@ const EntrepriseLanding = () => {
                 </a>
               </div>
               <div className="flex flex-wrap items-center gap-5 text-sm text-muted-foreground">
-                {["Sans engagement", "Mise en route en 5 minutes", "Support inclus"].map((item) => (
+                {["Sans engagement", "Aucun débit immédiat", "Décision toujours humaine"].map((item) => (
                   <span key={item} className="flex items-center gap-1.5">
                     <Check className="h-4 w-4 text-green-400" />
                     {item}
@@ -154,41 +154,37 @@ const EntrepriseLanding = () => {
               </div>
             </div>
 
-            <div className="glass-card border border-border/60 p-8">
+            <div className="glass-card border border-border/60 p-6 sm:p-8">
               <div className="mb-6 flex items-center justify-between">
                 <div className="flex items-center gap-3">
                   <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-accent/20">
-                    <BarChart3 className="h-5 w-5 text-accent" />
+                    <Wand2 className="h-5 w-5 text-accent" />
                   </div>
                   <div>
-                    <p className="text-sm font-semibold">Dashboard Entreprise</p>
-                    <p className="text-xs text-muted-foreground">Vue en temps réel</p>
+                    <p className="text-sm font-semibold">Votre parcours recruteur</p>
+                    <p className="text-xs text-muted-foreground">Simple, guidé et vérifiable</p>
                   </div>
                 </div>
-                <span className="rounded-full bg-green-400/10 px-2.5 py-1 text-xs font-medium text-green-400">● Live</span>
+                <span className="rounded-full bg-green-400/10 px-2.5 py-1 text-xs font-medium text-green-500">Prêt à utiliser</span>
               </div>
-              <div className="grid grid-cols-2 gap-3">
+              <div className="space-y-3">
                 {[
-                  { value: "12", label: "Offres actives", color: "gradient-text" },
-                  { value: "48", label: "Candidatures", color: "gradient-text" },
-                  { value: "85%", label: "Taux de matching", color: "text-green-400" },
-                  { value: "3j", label: "Temps moyen", color: "gradient-text" },
-                ].map(({ value, label, color }) => (
-                  <div key={label} className="rounded-xl border border-border/40 bg-secondary/50 p-4">
-                    <p className={`text-2xl font-bold ${color}`}>{value}</p>
-                    <p className="mt-1 text-xs text-muted-foreground">{label}</p>
+                  { step: "01", title: "Décrivez votre besoin", text: "Poste, lieu, contrat et critères utiles." },
+                  { step: "02", title: "Relisez l’offre générée", text: "Aperçu candidat et contrôle qualité avant publication." },
+                  { step: "03", title: "Suivez les candidatures", text: "Statut, échanges et pièces réunis dans le même dossier." },
+                ].map(({ step, title, text }) => (
+                  <div key={step} className="flex items-start gap-4 rounded-xl border border-border/40 bg-secondary/50 p-4">
+                    <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-accent/10 text-xs font-bold text-accent">{step}</span>
+                    <div>
+                      <p className="text-sm font-semibold text-foreground">{title}</p>
+                      <p className="mt-1 text-xs leading-5 text-muted-foreground">{text}</p>
+                    </div>
                   </div>
                 ))}
               </div>
-              <div className="mt-3 rounded-xl border border-border/40 bg-secondary/50 p-4">
-                <div className="flex items-center justify-between">
-                  <div>
-                    <p className="mb-1 text-xs font-semibold text-muted-foreground">Offre la plus populaire</p>
-                    <p className="font-bold gradient-text">Développeur React Senior</p>
-                    <p className="text-xs text-muted-foreground">23 candidatures cette semaine</p>
-                  </div>
-                  <TrendingUp className="h-8 w-8 text-accent/40" />
-                </div>
+              <div className="mt-3 flex items-start gap-3 rounded-xl border border-emerald-500/20 bg-emerald-500/[0.07] p-4">
+                <Shield className="mt-0.5 h-5 w-5 shrink-0 text-emerald-500" />
+                <p className="text-xs leading-5 text-muted-foreground"><span className="font-semibold text-foreground">Documents protégés :</span> stockage privé, accès contrôlé et ouvertures journalisées.</p>
               </div>
             </div>
           </div>
@@ -352,17 +348,17 @@ const EntrepriseLanding = () => {
         <div className="glass-card mx-auto max-w-3xl border border-accent/20 p-12 text-center">
           <div className="mb-4 inline-flex items-center gap-2 rounded-full border border-accent/30 bg-accent/10 px-3 py-1.5 text-xs font-medium text-accent">
             <Sparkles className="h-3 w-3" />
-            Rejoignez 1000+ entreprises
+            Préparez votre premier recrutement
           </div>
           <h2 className="mb-4 text-3xl font-bold">
             Prêt à moderniser votre <span className="gradient-text">recrutement</span> ?
           </h2>
           <p className="mb-8 text-muted-foreground">
-            Créez votre compte en 2 minutes et commencez à recruter différemment.
+            Testez le parcours complet pendant 30 jours, puis gardez uniquement la formule adaptée à votre volume de recrutement.
           </p>
           <Link to="/entreprise/connexion">
             <Button variant="glow" size="lg" className="gap-2 px-10">
-              Créer mon compte entreprise
+              Démarrer mon essai
               <ArrowRight className="h-4 w-4" />
             </Button>
           </Link>

@@ -2,13 +2,14 @@ import { emailCandidatureStatut, emailNouveauMessage, emailOffrePubliee } from "
 import { useAuth } from "@/contexts/AuthContext";
 import { useNavigate } from "react-router-dom";
 import { Button } from "@/components/ui/button";
+import { Checkbox } from "@/components/ui/checkbox";
 import { DOCUMENT_ACCEPT_ATTRIBUTE, formatStoredMessageText, sanitizeStorageFileName, validateDocumentFile } from "@/lib/utils";
-import { deletePrivateDocument, logDocumentAccess, openPrivateDocument, uploadPrivateDocument } from "@/lib/documentSecurity";
+import { confirmDocumentReceipt, deletePrivateDocument, logDocumentAccess, openPrivateDocument, uploadPrivateDocument } from "@/lib/documentSecurity";
 import ConfirmActionDialog from "@/components/ConfirmActionDialog";
 import AccountSecurityPanel from "@/components/AccountSecurityPanel";
 import ThemeToggle from "@/components/ThemeToggle";
 import OfferDescription, { getOfferDescriptionPreview } from "@/components/OfferDescription";
-import { Sparkles, Wand2, Users, BarChart3, LogOut, Building2, Plus, FileText, Camera, Trash2, CheckCircle, Eye, EyeOff, Send, MessageSquare, ChevronDown, ChevronUp, Search, MapPin, Euro, GraduationCap, Calendar, Briefcase, Wrench, Mail, Check, X, Pencil, Menu, ArrowLeft, CreditCard, Lock, Download, ShieldCheck, Image as ImageIcon } from "lucide-react";
+import { Sparkles, Wand2, Users, BarChart3, LogOut, Building, Building2, Plus, FileText, Camera, Trash2, CheckCircle, Eye, EyeOff, Send, MessageSquare, ChevronDown, ChevronUp, Search, MapPin, Euro, GraduationCap, Calendar, Briefcase, Wrench, Mail, Check, X, Pencil, Menu, ArrowLeft, CreditCard, Lock, Download, ShieldCheck, Image as ImageIcon } from "lucide-react";
 import { useEffect, useMemo, useState, useRef } from "react";
 import { toast } from "sonner";
 import { supabase } from "@/integrations/supabase/client";
@@ -17,7 +18,18 @@ import { requestAiContent } from "@/lib/aiAssistant";
 import { translateAppError } from "@/lib/authMessages";
 import { isCandidateExchangeClosed } from "@/lib/candidateExchange";
 import { COMPANY_COVER_FILE_NAME, getCompanyCoverPath, getCompanyCoverPublicUrl, validateCompanyCoverImage } from "@/lib/companyMedia";
-import { REQUESTABLE_DOCUMENTS, getRequestStatusMeta } from "@/lib/documentRequests";
+import { PROFILE_IMAGE_ACCEPT_ATTRIBUTE, uploadProfileImage } from "@/lib/profileMedia";
+import { analyzeOfferQuality } from "@/lib/offerQuality";
+import {
+  ALLOWED_OFFER_CONTRACTS,
+  SALARY_PERIODS,
+  TEMPORARY_OFFER_CONTRACTS,
+  analyzeOfferCompliance,
+} from "@/lib/offerCompliance";
+import { REQUESTABLE_DOCUMENTS, REQUESTABLE_DOCUMENT_PHASES, getRequestStatusMeta } from "@/lib/documentRequests";
+import { COMPANY_REQUEST_RETENTION_MESSAGE } from "@/lib/documentRetention";
+import { buildSupportMailto } from "@/lib/contact";
+import { SALES_TERMS_VERSION } from "@/lib/legal";
 import {
   formatTalentAvailabilityLabel,
   parseTalentAvailabilityFromBio,
@@ -70,12 +82,7 @@ const SECTEURS = [
   "Transport de marchandises", "Travaux publics", "Vétérinaire & Animalerie",
 ];
 
-const CONTRATS = [
-  "CDI", "CDI Cadre", "CDD", "CDD - Court terme (jusqu'à 3 mois)",
-  "CDD - Court terme (jusqu'à 6 mois)", "CDD Renouvelable", "Intérim", "Freelance",
-  "Stage", "Alternance", "Contrat de professionnalisation", "Contrat étudiant",
-  "Service civique", "Intermittent",
-];
+const CONTRATS = [...ALLOWED_OFFER_CONTRACTS];
 
 const DISPLAY_LABELS: Record<string, string> = {
   "Aeronautique & Spatial": "Aéronautique & Spatial",
@@ -559,6 +566,7 @@ const EntrepriseDashboard = () => {
   const [mobileNavOpen, setMobileNavOpen] = useState(false);
   const [offresRefreshToken, setOffresRefreshToken] = useState(0);
   const [billingState, setBillingState] = useState<EntrepriseBillingState | null>(null);
+  const [blockedFeatureLabel, setBlockedFeatureLabel] = useState<string | null>(null);
   const candidaturesRecuesSignalKey = user ? `spotted-talent:entreprise-candidatures:${user.id}` : "";
   const activeTabLabel = tabs.find((tab) => tab.id === activeTab)?.label || "Dashboard";
   const effectivePlanId = billingState ? getEffectiveBillingPlanId(billingState) : "starter";
@@ -609,6 +617,7 @@ const EntrepriseDashboard = () => {
   useEffect(() => {
     if (!billingState) return;
     if (isEntrepriseTabLockedByBilling(activeTab, billingState)) {
+      setBlockedFeatureLabel(tabs.find((tab) => tab.id === activeTab)?.label || null);
       setActiveTab("abonnement");
       toast.error(
         billingState.subscriptionStatus === "trial" && !billingState.trialPlanLocked
@@ -686,38 +695,42 @@ const EntrepriseDashboard = () => {
           }
         }
       };
-      const chargerStats = async () => {
-        const { count: countOffres } = await supabase.from("offres").select("*", { count: "exact", head: true }).eq("entreprise_id", user.id);
-        setNbOffres(countOffres || 0);
-        const { data: offres } = await supabase.from("offres").select("id").eq("entreprise_id", user.id);
-        if (offres && offres.length > 0) {
-          const ids = offres.map((o: any) => o.id);
-          const { count: countCandidatures } = await supabase.from("candidatures").select("*", { count: "exact", head: true }).in("offre_id", ids);
-          setNbCandidatures(countCandidatures || 0);
-        }
-      };
-      const chargerNotifications = async () => {
-        const { count } = await supabase.from("messages").select("*", { count: "exact", head: true }).eq("destinataire_id", user.id).eq("lu", false);
-        setNbMessagesNonLus(count || 0);
-      };
-      const chargerNouvellesCandidatures = async () => {
-        const { data: offres } = await supabase.from("offres").select("id").eq("entreprise_id", user.id);
+      const chargerIndicateurs = async () => {
+        const [offresResult, messagesResult] = await Promise.all([
+          supabase.from("offres").select("id", { count: "exact" }).eq("entreprise_id", user.id),
+          supabase.from("messages").select("id", { count: "exact", head: true }).eq("destinataire_id", user.id).eq("lu", false),
+        ]);
+        const offres = offresResult.data || [];
+        setNbOffres(offresResult.count || offres.length);
+        setNbMessagesNonLus(messagesResult.count || 0);
+
         if (!offres || offres.length === 0) {
+          setNbCandidatures(0);
           setNbNouvellesCandidatures(0);
           return;
         }
-        const ids = offres.map((o: any) => o.id);
-        const { data: candidatures } = await supabase.from("candidatures").select("id").in("offre_id", ids);
+        const ids = offres.map((offre) => offre.id);
+        const { data: candidatures, count } = await supabase
+          .from("candidatures")
+          .select("id", { count: "exact" })
+          .in("offre_id", ids);
+        setNbCandidatures(count || candidatures?.length || 0);
         const seenMap = readEntrepriseSignalMap(candidaturesRecuesSignalKey);
-        const count = (candidatures || []).filter((c: any) => !seenMap[c.id]).length;
-        setNbNouvellesCandidatures(count);
+        setNbNouvellesCandidatures((candidatures || []).filter((candidature) => !seenMap[candidature.id]).length);
       };
-      chargerAvatar(); chargerStats(); chargerNotifications(); chargerNouvellesCandidatures();
-      const interval = setInterval(() => {
-        chargerNotifications();
-        chargerNouvellesCandidatures();
-      }, 30000);
-      return () => clearInterval(interval);
+
+      const refreshWhenVisible = () => {
+        if (document.visibilityState === "visible") void chargerIndicateurs();
+      };
+
+      void chargerAvatar();
+      void chargerIndicateurs();
+      const interval = window.setInterval(refreshWhenVisible, 60000);
+      document.addEventListener("visibilitychange", refreshWhenVisible);
+      return () => {
+        window.clearInterval(interval);
+        document.removeEventListener("visibilitychange", refreshWhenVisible);
+      };
     }
   }, [user, candidaturesRecuesSignalKey]);
 
@@ -769,6 +782,31 @@ const EntrepriseDashboard = () => {
             ? `Votre essai expire bientôt : il reste ${billingTrialDaysLeft} jour(s) avant le premier paiement.`
             : "Essai gratuit actif : votre carte est enregistrée et aucun débit n'aura lieu avant la fin des 30 jours.";
 
+  const billingUnlockLabel = billingNeedsCheckout ? "Activer mon essai" : "Choisir ma formule";
+  const openBillingForLockedFeature = (tabId?: string) => {
+    const featureLabel = tabId ? tabs.find((tab) => tab.id === tabId)?.label || null : null;
+    setBlockedFeatureLabel(featureLabel);
+    setActiveTab("abonnement");
+    setMobileNavOpen(false);
+    if (tabId) {
+      toast.message(
+        billingNeedsCheckout
+          ? `${featureLabel} sera disponible dès que votre essai sera activé.`
+          : `${featureLabel} sera disponible dès qu'une formule sera active.`,
+      );
+    }
+  };
+  const navigateEntrepriseTab = (tabId: string) => {
+    if (isEntrepriseTabLockedByBilling(tabId, billingState)) {
+      openBillingForLockedFeature(tabId);
+      return;
+    }
+    setBlockedFeatureLabel(null);
+    setActiveTab(tabId);
+    if (tabId === "messagerie") setNbMessagesNonLus(0);
+    if (tabId === "candidats") void marquerCandidaturesRecuesCommeVues();
+  };
+
   return (
     <div className="dashboard-shell min-h-screen lg:flex">
       {mobileNavOpen && (
@@ -796,17 +834,22 @@ const EntrepriseDashboard = () => {
         <div className="p-4 border-b border-border/50">
           <div className="dashboard-profile-card flex flex-col items-center gap-3">
             <div className="relative">
-              <div className="w-20 h-20 rounded-full bg-accent/20 border-2 border-accent/40 flex items-center justify-center overflow-hidden">
-                {avatarUrl ? (<img src={avatarUrl} alt="avatar" className="w-full h-full object-cover" onError={() => setAvatarUrl(null)} />) : (<Building2 className="w-10 h-10 text-accent/60" />)}
+              <div className="w-20 h-20 rounded-2xl bg-primary/10 border-2 border-primary/25 flex items-center justify-center overflow-hidden shadow-sm">
+                {avatarUrl ? (<img src={avatarUrl} alt="Logo de l'entreprise" className="w-full h-full object-cover" onError={() => setAvatarUrl(null)} />) : (<Building className="w-10 h-10 text-primary" strokeWidth={1.8} />)}
               </div>
               <label className="absolute bottom-0 right-0 w-7 h-7 rounded-full bg-accent flex items-center justify-center border-2 border-background hover:bg-accent/80 transition-colors cursor-pointer">
                 <Camera className="w-3 h-3 text-white" />
-                <input type="file" accept="image/*" className="hidden" onChange={async (e) => {
-                  const file = e.target.files?.[0]; if (!file || !user) return;
-                  const ext = file.name.split(".").pop();
-                  const path = `${user.id}/avatar.${ext}`;
-                  const { error } = await supabase.storage.from("avatars").upload(path, file, { upsert: true });
-                  if (!error) { const { data } = supabase.storage.from("avatars").getPublicUrl(path); setAvatarUrl(data.publicUrl + "?t=" + Date.now()); toast.success("Logo mis à jour !"); }
+                <input type="file" accept={PROFILE_IMAGE_ACCEPT_ATTRIBUTE} className="hidden" onChange={async (event) => {
+                  const file = event.target.files?.[0];
+                  if (!file || !user) return;
+                  try {
+                    setAvatarUrl(await uploadProfileImage(user.id, file));
+                    toast.success("Logo mis à jour !");
+                  } catch (error) {
+                    toast.error(translateAppError(error instanceof Error ? error.message : "", "Impossible d'ajouter ce logo."));
+                  } finally {
+                    event.target.value = "";
+                  }
                 }} />
               </label>
             </div>
@@ -824,30 +867,55 @@ const EntrepriseDashboard = () => {
               key={id}
               onClick={() => {
                 if (tabLocked) {
-                  setActiveTab("abonnement");
-                  setMobileNavOpen(false);
-                  toast.error(billingNeedsCheckout
-                    ? "Enregistrez votre carte pour activer les 30 jours d'essai."
-                    : "Essai gratuit expiré. Activez un plan pour accéder à cette section.");
+                  openBillingForLockedFeature(id);
                   return;
                 }
-                setActiveTab(id);
-                setMobileNavOpen(false);
-                if (id === "messagerie") setNbMessagesNonLus(0);
-                if (id === "candidats") void marquerCandidaturesRecuesCommeVues();
+                navigateEntrepriseTab(id);
               }}
               className={`dashboard-nav-item ${activeTab === id ? "dashboard-nav-item-accent-active" : ""} ${tabLocked ? "cursor-not-allowed opacity-55" : ""}`}
               title={tabLocked ? (billingNeedsCheckout ? "Carte requise pour activer l'essai" : "Essai expiré - activez un plan") : undefined}
-            >
-              <Icon className="w-4 h-4" />
-              <span className="flex-1 text-left">{label}</span>
+              >
+                <Icon className="w-4 h-4" />
+                <span className="min-w-0 flex-1 text-left">
+                  <span className="block truncate">{label}</span>
+                  {tabLocked && (
+                    <span className="mt-0.5 block text-[10px] font-medium normal-case tracking-normal text-muted-foreground">
+                      {billingNeedsCheckout ? "Activez l'essai pour l'ouvrir" : "Choisissez une formule pour l'ouvrir"}
+                    </span>
+                  )}
+                </span>
               {id === "messagerie" && nbMessagesNonLus > 0 && (<span className="w-5 h-5 rounded-full bg-red-500 text-white text-xs flex items-center justify-center font-bold">{nbMessagesNonLus}</span>)}
               {id === "candidats" && nbNouvellesCandidatures > 0 && (<span className="w-5 h-5 rounded-full bg-blue-500 text-white text-xs flex items-center justify-center font-bold">{nbNouvellesCandidatures}</span>)}
-              {tabLocked && <span className="text-[10px] font-semibold uppercase tracking-wide text-amber-300">Bloqué</span>}
+               {tabLocked && <span className="rounded-full border border-amber-500/25 bg-amber-500/10 px-1.5 py-0.5 text-[9px] font-semibold uppercase tracking-wide text-amber-600 dark:text-amber-300">Bloqué</span>}
             </button>
           )})}
+          {isEntrepriseTabLockedByBilling("offres", billingState) && (
+            <button
+              type="button"
+              onClick={() => openBillingForLockedFeature()}
+              className="mt-3 w-full rounded-2xl border border-primary/25 bg-primary/[0.08] p-3 text-left transition-colors hover:border-primary/45 hover:bg-primary/[0.12]"
+            >
+              <span className="flex items-start gap-2">
+                <Lock className="mt-0.5 h-4 w-4 shrink-0 text-primary" />
+                <span>
+                  <span className="block text-xs font-semibold text-foreground">Vos outils de recrutement sont prêts</span>
+                  <span className="mt-1 block text-[11px] leading-4 text-muted-foreground">
+                    {billingNeedsCheckout ? "Activez l'essai pour créer et suivre vos recrutements." : "Réactivez une formule pour retrouver vos outils."}
+                  </span>
+                  <span className="mt-2 inline-block text-xs font-semibold text-primary">{billingUnlockLabel} →</span>
+                </span>
+              </span>
+            </button>
+          )}
         </nav>
         <div className="border-t border-border/50 p-4">
+          <a
+            href={buildSupportMailto(`Support Spotted Talent - ${profile?.full_name || "Entreprise"}`)}
+            className="dashboard-nav-item mb-2"
+          >
+            <Mail className="h-4 w-4" />
+            <span>Contacter le support</span>
+          </a>
           <div className="mb-2 flex items-center justify-between rounded-xl border border-border/60 bg-background/70 px-3 py-2">
             <span className="text-xs font-medium text-muted-foreground">Apparence</span>
             <ThemeToggle className="border-0 bg-transparent p-0 shadow-none [&_button]:h-7 [&_button]:w-7" />
@@ -859,7 +927,13 @@ const EntrepriseDashboard = () => {
       </aside>
       <main className="dashboard-main min-h-screen flex-1 px-4 pb-8 pt-20 sm:px-6 lg:ml-64 lg:p-8">
         {billingState?.subscriptionStatus !== "active" && (
-          <div className={`mb-4 rounded-2xl border px-4 py-3 text-sm ${billingBannerClass}`}>{billingBannerText}</div>
+          <div className={`mb-4 flex flex-col gap-3 rounded-2xl border px-4 py-3 text-sm sm:flex-row sm:items-center sm:justify-between ${billingBannerClass}`}>
+            <p className="max-w-3xl leading-6">{billingBannerText}</p>
+            <Button variant="outline" size="sm" className="shrink-0 bg-background/70" onClick={() => openBillingForLockedFeature()}>
+              <CreditCard className="mr-2 h-4 w-4" />
+              {billingUnlockLabel}
+            </Button>
+          </div>
         )}
         <div className="mb-6 flex items-center gap-3 lg:hidden">
           <button
@@ -874,7 +948,7 @@ const EntrepriseDashboard = () => {
             <p className="truncate text-sm font-semibold text-foreground">{activeTabLabel}</p>
           </div>
         </div>
-        {activeTab === "dashboard" && <DashboardHome profile={profile} nbOffres={nbOffres} nbCandidatures={nbCandidatures} user={user} onNavigate={setActiveTab} />}
+        {activeTab === "dashboard" && <DashboardHome profile={profile} nbOffres={nbOffres} nbCandidatures={nbCandidatures} user={user} onNavigate={navigateEntrepriseTab} billingLocked={isEntrepriseTabLockedByBilling("offres", billingState)} billingNeedsCheckout={billingNeedsCheckout} onActivateBilling={() => openBillingForLockedFeature()} />}
         {activeTab === "profil" && <ProfilEntrepriseTab profile={profile} user={user} avatarUrl={avatarUrl} setAvatarUrl={setAvatarUrl} coverUrl={coverUrl} setCoverUrl={setCoverUrl} />}
         {activeTab === "offres" && <OffresTab user={user} planId={effectivePlanId} entitlements={planEntitlements} onOffrePubliee={() => { setNbOffres(n => n + 1); setOffresRefreshToken((token) => token + 1); setActiveTab("mes-offres"); }} />}
         {activeTab === "mes-offres" && <MesOffresTab user={user} planId={effectivePlanId} entitlements={planEntitlements} refreshToken={offresRefreshToken} onOffresChanged={setNbOffres} onOpenDraft={() => setActiveTab("offres")} />}
@@ -883,6 +957,7 @@ const EntrepriseDashboard = () => {
             user={user}
             billingState={billingState}
             onBillingChange={setBillingState}
+            unlockTargetLabel={blockedFeatureLabel}
           />
         )}
         {activeTab === "candidats" && <CandidatsTab user={user} planId={effectivePlanId} entitlements={planEntitlements} />}
@@ -897,10 +972,12 @@ const AbonnementEntrepriseTab = ({
   user,
   billingState,
   onBillingChange,
+  unlockTargetLabel,
 }: {
   user: any;
   billingState: EntrepriseBillingState;
   onBillingChange: (next: EntrepriseBillingState) => void;
+  unlockTargetLabel?: string | null;
 }) => {
   const [selectedPlanId, setSelectedPlanId] = useState<BillingPlanId>(billingState.plan);
   const [billingCycle, setBillingCycle] = useState<BillingCycle>(billingState.billingCycle);
@@ -908,7 +985,9 @@ const AbonnementEntrepriseTab = ({
   const [billingProfileDraft, setBillingProfileDraft] = useState<BillingProfile>(billingState.billingProfile);
   const [checkoutPlanId, setCheckoutPlanId] = useState<BillingPlanId | null>(null);
   const [openingPortal, setOpeningPortal] = useState(false);
+  const [salesTermsAccepted, setSalesTermsAccepted] = useState(false);
   const [verifyingSiret, setVerifyingSiret] = useState(false);
+  const [showBillingDetails, setShowBillingDetails] = useState(false);
   const lastAutomaticSiretAttempt = useRef("");
   const lastAutomaticBillingSyncKey = useRef("");
 
@@ -1111,6 +1190,7 @@ const AbonnementEntrepriseTab = ({
         updatedAt: new Date().toISOString(),
       };
       setBillingProfileDraft(nextProfile);
+      setShowBillingDetails(false);
       persistBillingState(nextState);
       toast.success("Entreprise vérifiée. Les coordonnées officielles ont été ajoutées.");
     } catch (error: any) {
@@ -1130,12 +1210,8 @@ const AbonnementEntrepriseTab = ({
   }, [billingProfileDraft.siret, billingProfileDraft.siretVerifiedAt, verifyingSiret]);
 
   const enregistrerFacturation = () => {
-    if (!billingProfileDraft.legalName.trim()) {
-      toast.error("Renseignez la raison sociale de l'entreprise.");
-      return;
-    }
-    if (!billingProfileDraft.billingEmail.trim()) {
-      toast.error("Renseignez un e-mail de facturation.");
+    if (!billingProfileDraft.siretVerifiedAt) {
+      toast.error("Vérifiez d'abord le SIRET de l'entreprise.");
       return;
     }
     const next = buildNextState();
@@ -1144,8 +1220,12 @@ const AbonnementEntrepriseTab = ({
   };
 
   const demarrerCheckoutStripe = async (planId: BillingPlanId) => {
-    if (!billingProfileDraft.legalName.trim() || !billingProfileDraft.addressLine1.trim() || !billingProfileDraft.postalCode.trim() || !billingProfileDraft.city.trim()) {
-      toast.error("Complétez le nom et l'adresse de l'entreprise avant le paiement.");
+    if (!billingProfileDraft.siretVerifiedAt) {
+      toast.error("Vérifiez votre SIRET avant de passer au paiement sécurisé.");
+      return;
+    }
+    if (!salesTermsAccepted) {
+      toast.error("Acceptez les CGV Entreprises avant d'ouvrir le paiement sécurisé.");
       return;
     }
     setCheckoutPlanId(planId);
@@ -1162,6 +1242,7 @@ const AbonnementEntrepriseTab = ({
           billingCycle,
           addons: [],
           billingProfile: checkoutBillingProfile,
+          salesTermsVersion: SALES_TERMS_VERSION,
           successUrl,
           cancelUrl,
         },
@@ -1170,6 +1251,9 @@ const AbonnementEntrepriseTab = ({
         const errorCode = await readFunctionErrorCode(error, data);
         if (errorCode === "company_verification_required") {
           throw new Error("Le SIRET doit être vérifié avant le paiement.");
+        }
+        if (errorCode === "sales_terms_acceptance_required") {
+          throw new Error("La version actuelle des CGV doit être acceptée avant le paiement.");
         }
         throw error;
       }
@@ -1329,6 +1413,41 @@ const AbonnementEntrepriseTab = ({
 
   return (
     <div className="space-y-6">
+      {!isActive && !isConfirmedTrial && (
+        <div className="dashboard-panel border-primary/25 bg-primary/[0.06] p-5 sm:p-6">
+          <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+            <div className="flex gap-3">
+              <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-2xl bg-primary/10 text-primary">
+                <Lock className="h-5 w-5" />
+              </div>
+              <div>
+                <p className="font-semibold text-foreground">
+                  {unlockTargetLabel ? `Pour ouvrir « ${unlockTargetLabel} »` : "Pour ouvrir vos outils de recrutement"}
+                </p>
+                <p className="mt-1 max-w-2xl text-sm leading-6 text-muted-foreground">
+                  Vérifiez votre SIRET, puis choisissez une formule. Le paiement est demandé uniquement sur la page sécurisée Stripe ; vos outils seront ouverts dès l'activation de l'essai ou de l'abonnement.
+                </p>
+              </div>
+            </div>
+            <Button
+              variant="glow"
+              className="shrink-0"
+              onClick={() => {
+                const target = document.getElementById(billingProfileDraft.siretVerifiedAt ? "billing-plans" : "billing-siret");
+                target?.scrollIntoView({ behavior: "smooth", block: "center" });
+                if (target instanceof HTMLInputElement) target.focus();
+              }}
+            >
+              {billingProfileDraft.siretVerifiedAt ? "Choisir une formule" : "Vérifier mon SIRET"}
+            </Button>
+          </div>
+          <div className="mt-4 flex flex-wrap gap-2 text-xs font-medium text-primary">
+            <span className="rounded-full border border-primary/20 bg-background/60 px-3 py-1">Créer une offre IA</span>
+            <span className="rounded-full border border-primary/20 bg-background/60 px-3 py-1">Mes offres</span>
+            <span className="rounded-full border border-primary/20 bg-background/60 px-3 py-1">Candidatures reçues</span>
+          </div>
+        </div>
+      )}
       <div className="dashboard-panel p-6 sm:p-7">
         <div className="grid gap-6 lg:grid-cols-[1.2fr_0.8fr] lg:items-start">
           <div>
@@ -1450,7 +1569,28 @@ const AbonnementEntrepriseTab = ({
         </div>
       </div>
 
-      <div className="grid gap-4 lg:grid-cols-3">
+      {!hasManagedStripeSubscription && (
+        <div className="dashboard-panel border-primary/20 bg-primary/[0.04] p-5 sm:p-6">
+          <label className="flex cursor-pointer items-start gap-3">
+            <Checkbox
+              className="mt-0.5"
+              checked={salesTermsAccepted}
+              onCheckedChange={(checked) => setSalesTermsAccepted(checked === true)}
+              aria-label="Accepter les CGV Entreprises"
+            />
+            <span className="text-sm leading-6 text-muted-foreground">
+              J’ai lu et j’accepte les{" "}
+              <a href="/cgv" target="_blank" rel="noreferrer" className="font-semibold text-primary hover:underline">
+                CGV Entreprises
+              </a>{" "}
+              (version du {SALES_TERMS_VERSION.split("-").reverse().join("/")}), notamment l’essai de 30 jours,
+              le renouvellement, la résiliation et l’absence de remboursement automatique d’une période commencée.
+            </span>
+          </label>
+        </div>
+      )}
+
+      <div id="billing-plans" className="grid gap-4 lg:grid-cols-3">
         {ABONNEMENT_PLANS.map((plan) => {
           const actif = plan.id === billingState.plan && isActive && billingState.billingCycle === billingCycle;
           const currentTrial = plan.id === trialLockedPlanId && isConfirmedTrial && billingState.billingCycle === billingCycle;
@@ -1499,7 +1639,7 @@ const AbonnementEntrepriseTab = ({
                 <Button
                   variant={currentSubscription ? "secondary" : "glow"}
                   className="w-full"
-                  disabled={checkoutLoading || openingPortal}
+                  disabled={checkoutLoading || openingPortal || (!hasManagedStripeSubscription && !salesTermsAccepted)}
                   onClick={() => hasManagedStripeSubscription ? ouvrirPortailStripe(plan.id) : demarrerCheckoutStripe(plan.id)}
                 >
                   {checkoutLoading
@@ -1547,8 +1687,9 @@ const AbonnementEntrepriseTab = ({
               variant="ghost-glow"
               className="w-full sm:w-auto"
               onClick={() => {
-                const subject = encodeURIComponent(`Support prioritaire Premium - ${billingProfileDraft.legalName || "Entreprise"}`);
-                window.location.href = `mailto:spotter.talent.projet@gmail.com?subject=${subject}`;
+                window.location.href = buildSupportMailto(
+                  `Support prioritaire Premium - ${billingProfileDraft.legalName || "Entreprise"}`,
+                );
               }}
             >
               <Mail className="mr-2 h-4 w-4" /> Contacter le support
@@ -1645,6 +1786,7 @@ const AbonnementEntrepriseTab = ({
               <div className="flex gap-2">
                 <div className="relative flex-1">
                   <input
+                    id="billing-siret"
                     value={billingProfileDraft.siret}
                     onChange={(e) => {
                       const nextSiret = e.target.value.replace(/\D/g, "").slice(0, 14);
@@ -1673,13 +1815,31 @@ const AbonnementEntrepriseTab = ({
               <p className="mt-1.5 text-[11px] leading-4 text-muted-foreground">
                 Le nom et l'adresse sont récupérés depuis l'Annuaire des Entreprises. Un SIRET vérifié ne peut être utilisé que sur un seul compte.
               </p>
+              {billingProfileDraft.siretVerifiedAt && (
+                <div className="mt-3 rounded-xl border border-emerald-500/20 bg-emerald-500/[0.06] p-3 text-sm">
+                  <p className="font-semibold text-foreground">{billingProfileDraft.legalName || "Entreprise vérifiée"}</p>
+                  <p className="mt-1 text-xs leading-5 text-muted-foreground">
+                    {[billingProfileDraft.addressLine1, billingProfileDraft.postalCode, billingProfileDraft.city].filter(Boolean).join(", ") || "Adresse officielle récupérée"}
+                  </p>
+                </div>
+              )}
             </div>
-            <input
-              value={billingProfileDraft.legalName}
-              onChange={(e) => updateBillingProfileField("legalName", e.target.value)}
-              className="rounded-xl border border-border bg-secondary/45 px-3 py-2 text-sm focus:outline-none focus:border-primary/40"
-              placeholder="Raison sociale"
-            />
+            {billingProfileDraft.siretVerifiedAt && (
+              <div className="sm:col-span-2 rounded-xl border border-border/60 bg-secondary/25 px-3 py-3 text-xs leading-5 text-muted-foreground">
+                Votre identité d'entreprise est déjà renseignée. Stripe vous demandera seulement les informations de paiement nécessaires au moment sécurisé du paiement.
+              </div>
+            )}
+            {billingProfileDraft.siretVerifiedAt && !showBillingDetails && (
+              <button type="button" onClick={() => setShowBillingDetails(true)} className="justify-self-start text-xs font-semibold text-primary hover:underline sm:col-span-2">
+                Ajouter ou modifier des coordonnées de facturation (facultatif)
+              </button>
+            )}
+            {showBillingDetails && (
+              <>
+                <div className="sm:col-span-2">
+                  <p className="text-xs font-semibold text-foreground">Coordonnées complémentaires</p>
+                  <p className="mt-1 text-xs text-muted-foreground">Facultatives : elles complètent la facture, sans modifier l'identité vérifiée.</p>
+                </div>
             <input
               value={billingProfileDraft.billingEmail}
               onChange={(e) => updateBillingProfileField("billingEmail", e.target.value)}
@@ -1698,38 +1858,20 @@ const AbonnementEntrepriseTab = ({
               className="rounded-xl border border-border bg-secondary/45 px-3 py-2 text-sm focus:outline-none focus:border-primary/40"
               placeholder="N° TVA intracom (optionnel)"
             />
-            <input
-              value={billingProfileDraft.addressLine1}
-              onChange={(e) => updateBillingProfileField("addressLine1", e.target.value)}
-              className="rounded-xl border border-border bg-secondary/45 px-3 py-2 text-sm focus:outline-none focus:border-primary/40"
-              placeholder="Adresse"
-            />
-            <input
-              value={billingProfileDraft.addressLine2}
-              onChange={(e) => updateBillingProfileField("addressLine2", e.target.value)}
-              className="rounded-xl border border-border bg-secondary/45 px-3 py-2 text-sm focus:outline-none focus:border-primary/40"
-              placeholder="Complément d'adresse (optionnel)"
-            />
-            <input
-              value={billingProfileDraft.postalCode}
-              onChange={(e) => updateBillingProfileField("postalCode", e.target.value)}
-              className="rounded-xl border border-border bg-secondary/45 px-3 py-2 text-sm focus:outline-none focus:border-primary/40"
-              placeholder="Code postal"
-            />
-            <input
-              value={billingProfileDraft.city}
-              onChange={(e) => updateBillingProfileField("city", e.target.value)}
-              className="rounded-xl border border-border bg-secondary/45 px-3 py-2 text-sm focus:outline-none focus:border-primary/40"
-              placeholder="Ville"
-            />
+              </>
+            )}
           </div>
           <div className="mt-4 flex flex-wrap gap-2">
-            <Button variant="ghost-glow" onClick={enregistrerFacturation}>
-              Enregistrer la fiche B2B
-            </Button>
-            <Button variant="secondary" onClick={() => ouvrirPortailStripe(selectedPlanId)} disabled={openingPortal}>
-              {openingPortal ? "Ouverture..." : "Portail facturation Stripe"}
-            </Button>
+            {showBillingDetails && (
+              <Button variant="ghost-glow" onClick={enregistrerFacturation}>
+                Enregistrer les coordonnées complémentaires
+              </Button>
+            )}
+            {hasStripeCustomerLink && (
+              <Button variant="secondary" onClick={() => ouvrirPortailStripe(selectedPlanId)} disabled={openingPortal}>
+                {openingPortal ? "Ouverture..." : "Portail facturation Stripe"}
+              </Button>
+            )}
           </div>
         </div>
 
@@ -1821,7 +1963,7 @@ const AbonnementEntrepriseTab = ({
   );
 };
 
-const DashboardHome = ({ profile, nbOffres, nbCandidatures, user, onNavigate }: any) => {
+const DashboardHome = ({ profile, nbOffres, nbCandidatures, user, onNavigate, billingLocked, billingNeedsCheckout, onActivateBilling }: any) => {
   const [stats, setStats] = useState({ acceptees: 0, refusees: 0, enAttente: 0, enEntretien: 0, messagesNonLus: 0, offreTop: "" });
   useEffect(() => {
     const chargerStats = async () => {
@@ -1916,7 +2058,7 @@ const DashboardHome = ({ profile, nbOffres, nbCandidatures, user, onNavigate }: 
                 <p className="mt-2 text-2xl font-bold">{responseRate}%</p>
               </div>
               <div className="dashboard-subcard px-4 py-3">
-                <p className="text-xs uppercase tracking-wide text-muted-foreground">Offre la plus vue</p>
+                <p className="text-xs uppercase tracking-wide text-muted-foreground">Offre la plus sollicitée</p>
                 <p className="mt-2 text-sm font-semibold text-foreground">{stats.offreTop || "Aucune donnée encore"}</p>
               </div>
             </div>
@@ -1924,12 +2066,36 @@ const DashboardHome = ({ profile, nbOffres, nbCandidatures, user, onNavigate }: 
         </div>
       </div>
 
+      {billingLocked && (
+        <div className="dashboard-panel border-primary/25 bg-primary/[0.06] p-5 sm:p-6">
+          <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+            <div className="flex gap-3">
+              <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl bg-primary/10 text-primary">
+                <Lock className="h-5 w-5" />
+              </div>
+              <div>
+                <p className="font-semibold text-foreground">Vos outils de recrutement sont prêts</p>
+                <p className="mt-1 max-w-2xl text-sm leading-6 text-muted-foreground">
+                  {billingNeedsCheckout
+                    ? "Il reste une seule étape : choisir une formule et enregistrer votre carte sur Stripe pour démarrer les 30 jours d'essai."
+                    : "Votre formule n'est plus active. Réactivez-la pour créer des offres, consulter vos annonces et traiter les candidatures."}
+                </p>
+              </div>
+            </div>
+            <Button variant="glow" className="shrink-0" onClick={onActivateBilling}>
+              <CreditCard className="mr-2 h-4 w-4" />
+              {billingNeedsCheckout ? "Activer mon essai" : "Réactiver ma formule"}
+            </Button>
+          </div>
+        </div>
+      )}
+
       <div className="grid gap-6 xl:grid-cols-4">
         <div className="dashboard-stat-card p-5">
           <div className="w-11 h-11 rounded-2xl bg-accent/12 flex items-center justify-center mb-4"><Briefcase className="w-5 h-5 text-accent" /></div>
-          <p className="text-muted-foreground text-xs mb-1">Offres actives</p>
+          <p className="text-muted-foreground text-xs mb-1">Offres enregistrées</p>
           <p className="text-3xl font-bold gradient-text">{nbOffres}</p>
-          <p className="text-xs text-muted-foreground mt-1">Publiées sur la plateforme</p>
+          <p className="text-xs text-muted-foreground mt-1">Actives ou mises en pause</p>
         </div>
         <div className="dashboard-stat-card p-5">
           <div className="w-11 h-11 rounded-2xl bg-accent/12 flex items-center justify-center mb-4"><Users className="w-5 h-5 text-accent" /></div>
@@ -2110,17 +2276,22 @@ const ProfilEntrepriseTab = ({ profile, user, avatarUrl, setAvatarUrl, coverUrl,
             <div className="dashboard-subcard p-5">
               <div className="flex flex-col gap-5">
                 <div className="relative w-fit">
-                  <div className="flex h-24 w-24 items-center justify-center overflow-hidden rounded-full border-2 border-accent/40 bg-accent/20">
-                    {avatarUrl ? <img src={avatarUrl} alt="logo" className="h-full w-full object-cover" onError={() => setAvatarUrl(null)} /> : <Building2 className="h-12 w-12 text-accent/60" />}
+                  <div className="flex h-24 w-24 items-center justify-center overflow-hidden rounded-2xl border-2 border-primary/25 bg-primary/10 shadow-sm">
+                    {avatarUrl ? <img src={avatarUrl} alt="Logo de l'entreprise" className="h-full w-full object-cover" onError={() => setAvatarUrl(null)} /> : <Building className="h-12 w-12 text-primary" strokeWidth={1.8} />}
                   </div>
                   <label className="absolute bottom-0 right-0 flex h-8 w-8 cursor-pointer items-center justify-center rounded-full border-2 border-background bg-accent transition-colors hover:bg-accent/80">
                     <Camera className="h-4 w-4 text-white" />
-                    <input type="file" accept="image/*" className="hidden" onChange={async (e) => {
-                      const file = e.target.files?.[0]; if (!file || !user) return;
-                      const ext = file.name.split(".").pop();
-                      const path = `${user.id}/avatar.${ext}`;
-                      const { error } = await supabase.storage.from("avatars").upload(path, file, { upsert: true });
-                      if (!error) { const { data } = supabase.storage.from("avatars").getPublicUrl(path); setAvatarUrl(data.publicUrl + "?t=" + Date.now()); toast.success("Logo mis à jour !"); }
+                    <input type="file" accept={PROFILE_IMAGE_ACCEPT_ATTRIBUTE} className="hidden" onChange={async (event) => {
+                      const file = event.target.files?.[0];
+                      if (!file || !user) return;
+                      try {
+                        setAvatarUrl(await uploadProfileImage(user.id, file));
+                        toast.success("Logo mis à jour !");
+                      } catch (error) {
+                        toast.error(translateAppError(error instanceof Error ? error.message : "", "Impossible d'ajouter ce logo."));
+                      } finally {
+                        event.target.value = "";
+                      }
                     }} />
                   </label>
                 </div>
@@ -2224,11 +2395,14 @@ const OffresTab = ({
   const [entreprise, setEntreprise] = useState("");
   const [competences, setCompetences] = useState("");
   const [localisation, setLocalisation] = useState("");
-  const [contrat, setContrat] = useState("CDI");
+  const [contrat, setContrat] = useState("");
   const [secteurOffre, setSecteurOffre] = useState("");
-  const [diplome, setDiplome] = useState("Sans diplôme");
+  const [diplome, setDiplome] = useState("");
+  const [dureeContrat, setDureeContrat] = useState("");
+  const [motifContratTemporaire, setMotifContratTemporaire] = useState("");
   const [salaireMin, setSalaireMin] = useState("");
   const [salaireMax, setSalaireMax] = useState("");
+  const [remunerationPeriode, setRemunerationPeriode] = useState("");
   const [avantages, setAvantages] = useState<string[]>([]);
   const [offre, setOffre] = useState("");
   const [loading, setLoading] = useState(false);
@@ -2239,7 +2413,8 @@ const OffresTab = ({
   const [weeklyNewOfferCount, setWeeklyNewOfferCount] = useState(0);
   const [screeningQuestions, setScreeningQuestions] = useState<ScreeningQuestion[]>([]);
   const [besoin, setBesoin] = useState("");
-  const [experience, setExperience] = useState("2 à 5 ans");
+  const [experience, setExperience] = useState("");
+  const [employerConfirmed, setEmployerConfirmed] = useState(false);
   const [creationStep, setCreationStep] = useState<1 | 2 | 3>(1);
   const [showAdvancedDetails, setShowAdvancedDetails] = useState(false);
   const [editingGeneratedOffer, setEditingGeneratedOffer] = useState(false);
@@ -2298,14 +2473,18 @@ const OffresTab = ({
       if (typeof draft.secteurOffre === "string") setSecteurOffre(draft.secteurOffre);
       if (typeof draft.diplome === "string") setDiplome(draft.diplome);
       if (typeof draft.experience === "string") setExperience(draft.experience);
+      if (typeof draft.dureeContrat === "string") setDureeContrat(draft.dureeContrat);
+      if (typeof draft.motifContratTemporaire === "string") setMotifContratTemporaire(draft.motifContratTemporaire);
       if (typeof draft.salaireMin === "string") setSalaireMin(draft.salaireMin);
       if (typeof draft.salaireMax === "string") setSalaireMax(draft.salaireMax);
+      if (typeof draft.remunerationPeriode === "string") setRemunerationPeriode(draft.remunerationPeriode);
       if (Array.isArray(draft.avantages)) setAvantages(draft.avantages.filter((value: unknown) => typeof value === "string"));
       if (Array.isArray(draft.permisRequis)) setPermisRequis(draft.permisRequis.filter((value: unknown) => typeof value === "string"));
       if (typeof draft.offre === "string") setOffre(draft.offre);
       if ([1, 2, 3].includes(draft.creationStep)) setCreationStep(draft.creationStep);
       if (Array.isArray(draft.screeningQuestions)) setScreeningQuestions(draft.screeningQuestions.slice(0, 5));
       if (typeof draft.urgent === "boolean") setUrgent(draft.urgent);
+      if (typeof draft.employerConfirmed === "boolean") setEmployerConfirmed(draft.employerConfirmed);
       if (typeof draft.updatedAt === "string") setLastDraftSavedAt(draft.updatedAt);
     } catch {
       // Un brouillon local invalide ne doit jamais bloquer la création d'une offre.
@@ -2357,14 +2536,18 @@ const OffresTab = ({
       secteurOffre,
       diplome,
       experience,
+      dureeContrat,
+      motifContratTemporaire,
       salaireMin,
       salaireMax,
+      remunerationPeriode,
       avantages,
       permisRequis,
       offre,
       creationStep,
       screeningQuestions,
       urgent,
+      employerConfirmed,
       updatedAt,
     }));
     setLastDraftSavedAt(updatedAt);
@@ -2372,7 +2555,27 @@ const OffresTab = ({
   };
 
   const genererOffre = async () => {
-    if (!poste) return toast.error("Remplissez le poste");
+    const generationCheck = analyzeOfferCompliance({
+      title: poste,
+      description: Array.from({ length: 60 }, () => "contenu").join(" "),
+      location: localisation,
+      contract: contrat,
+      sector: secteurOffre,
+      experience,
+      duration: dureeContrat,
+      temporaryReason: motifContratTemporaire,
+      degree: diplome,
+      salaryMin: salaireMin,
+      salaryMax: salaireMax,
+      salaryPeriod: remunerationPeriode,
+      screeningQuestions,
+      employerConfirmed: true,
+    });
+    if (generationCheck.blockers.length > 0) {
+      toast.error(generationCheck.blockers[0].message);
+      setCreationStep(generationCheck.blockers[0].field === "title" || generationCheck.blockers[0].field === "location" || generationCheck.blockers[0].field === "contract" || generationCheck.blockers[0].field === "experience" || generationCheck.blockers[0].field === "duration" || generationCheck.blockers[0].field === "temporaryReason" ? 1 : 2);
+      return;
+    }
     setLoading(true);
     try {
       const contenu = await requestAiContent("generate_offer", {
@@ -2384,17 +2587,40 @@ const OffresTab = ({
         competences,
         besoin,
         experience,
-        diplome: diplome !== "Sans diplôme" ? diplome : "",
+        dureeContrat,
+        motifContratTemporaire,
+        diplome,
         salaireMin,
         salaireMax,
+        remunerationPeriode,
         avantages,
         permisRequis,
       });
+      const generatedCheck = analyzeOfferCompliance({
+        title: poste,
+        description: contenu,
+        location: localisation,
+        contract: contrat,
+        sector: secteurOffre,
+        experience,
+        duration: dureeContrat,
+        temporaryReason: motifContratTemporaire,
+        degree: diplome,
+        salaryMin: salaireMin,
+        salaryMax: salaireMax,
+        salaryPeriod: remunerationPeriode,
+        screeningQuestions,
+        employerConfirmed: true,
+      });
+      if (!generatedCheck.canPublish) {
+        toast.error(`Le texte généré doit être corrigé : ${generatedCheck.blockers[0].message}`);
+        return;
+      }
       setOffre(contenu);
       setCreationStep(3);
       setEditingGeneratedOffer(false);
       toast.success("Offre générée !");
-    } catch (err) { toast.error("Erreur lors de la génération."); } finally { setLoading(false); }
+    } catch (err: any) { toast.error(translateAppError(err?.message, "Erreur lors de la génération.")); } finally { setLoading(false); }
   };
 
   const notifierTalentsParEmail = async (offreId: string) => {
@@ -2420,6 +2646,11 @@ const OffresTab = ({
 
   const publierOffre = async () => {
     if (!offre || !poste) return toast.error("Générez d'abord une offre.");
+    if (!offerCompliance.canPublish) {
+      toast.error(offerCompliance.blockers[0].message);
+      setCreationStep(offerCompliance.blockers[0].field === "description" ? 3 : 2);
+      return;
+    }
     if (activeOfferLimitReached) {
       return toast.error(`La formule ${getPlanById(planId).name} autorise ${entitlements.maxActiveOffers} offre(s) active(s). Mettez une offre en pause ou changez de formule.`);
     }
@@ -2439,13 +2670,20 @@ const OffresTab = ({
         localisation,
         description: offre,
         competences,
-        diplome,
-        salaire_min: salaireMin ? parseInt(salaireMin) : null,
-        salaire_max: salaireMax ? parseInt(salaireMax) : null,
+        diplome: diplome || null,
+        experience_requise: experience,
+        duree_contrat: dureeContrat || null,
+        motif_contrat_temporaire: motifContratTemporaire || null,
+        salaire_min: salaireMin ? Number(salaireMin) : null,
+        salaire_max: salaireMax ? Number(salaireMax) : null,
+        remuneration_periode: salaireMin && salaireMax ? remunerationPeriode : null,
         avantages: avantages.join(", "),
         permis_requis: permisRequis.join(", "),
         urgent: entitlements.urgentBadge ? urgent : false,
         questions_preselection: entitlements.screeningQuestions ? normalizedQuestions : [],
+        employer_certified_at: new Date().toISOString(),
+        employer_certification_version: "2026-08-09",
+        compliance_version: "2026-08-09",
         statut: "active",
       }).select("id").single();
       if (error) throw error;
@@ -2479,18 +2717,46 @@ const OffresTab = ({
     } finally { setPublishing(false); }
   };
 
-  const completionFields = [poste, contrat, localisation, secteurOffre, diplome, competences, offre].filter((value) => String(value || "").trim()).length;
-  const completionPercent = Math.round((completionFields / 7) * 100);
+  const completionFields = [poste, contrat, localisation, secteurOffre, experience, diplome, competences, offre].filter((value) => String(value || "").trim()).length;
+  const completionPercent = Math.round((completionFields / 8) * 100);
+  const salaryPeriodLabel = SALARY_PERIODS.find((period) => period.value === remunerationPeriode)?.label || "";
   const salaryLabel = salaireMin && salaireMax
-    ? `${salaireMin} € - ${salaireMax} € / mois`
+    ? `${salaireMin} € - ${salaireMax} € ${salaryPeriodLabel}`
     : salaireMin
-      ? `À partir de ${salaireMin} € / mois`
+      ? `À partir de ${salaireMin} €`
       : salaireMax
-        ? `Jusqu'à ${salaireMax} € / mois`
+        ? `Jusqu'à ${salaireMax} €`
         : "À définir";
   const selectedAdvantages = avantages.length > 0 ? avantages.join(", ") : "Aucun avantage sélectionné";
   const selectedPermis = permisRequis.length > 0 ? permisRequis.join(", ") : "Aucun permis spécifique";
-  const offerStatusLabel = offre ? "Prête à être relue" : "À générer";
+  const offerQuality = analyzeOfferQuality({
+    title: poste,
+    location: localisation,
+    contract: contrat,
+    sector: secteurOffre,
+    skills: competences,
+    description: offre,
+    salaryMin: salaireMin,
+    salaryMax: salaireMax,
+    benefits: avantages,
+  });
+  const offerCompliance = analyzeOfferCompliance({
+    title: poste,
+    description: offre,
+    location: localisation,
+    contract: contrat,
+    sector: secteurOffre,
+    experience,
+    duration: dureeContrat,
+    temporaryReason: motifContratTemporaire,
+    degree: diplome,
+    salaryMin: salaireMin,
+    salaryMax: salaireMax,
+    salaryPeriod: remunerationPeriode,
+    screeningQuestions,
+    employerConfirmed,
+  });
+  const publicationReady = offerQuality.blockers.length === 0 && offerCompliance.canPublish;
 
   return (
     <div className="space-y-4">
@@ -2551,19 +2817,34 @@ const OffresTab = ({
                   <input value={poste} onChange={(event) => setPoste(event.target.value)} className="mt-2 h-11 w-full rounded-xl border border-border bg-background/70 px-3 text-sm text-foreground outline-none focus:border-accent/50" placeholder="Ex. : Chauffeur poids lourd" />
                 </label>
                 <label className="text-xs font-semibold text-muted-foreground">
-                  Localisation
+                  Localisation *
                   <div className="mt-2"><LocationAutocompleteInput value={localisation} onChange={setLocalisation} placeholder="Ville ou code postal..." /></div>
                 </label>
                 <label className="text-xs font-semibold text-muted-foreground">
-                  Contrat
-                  <select value={contrat} onChange={(event) => setContrat(event.target.value)} className="mt-2 h-11 w-full rounded-xl border border-border bg-background/70 px-3 text-sm text-foreground outline-none focus:border-accent/50">{CONTRATS.map((item) => <option key={item}>{item}</option>)}</select>
-                </label>
-                <label className="text-xs font-semibold text-muted-foreground">
-                  Expérience
-                  <select value={experience} onChange={(event) => setExperience(event.target.value)} className="mt-2 h-11 w-full rounded-xl border border-border bg-background/70 px-3 text-sm text-foreground outline-none focus:border-accent/50">
-                    <option>Débutant accepté</option><option>1 à 2 ans</option><option>2 à 5 ans</option><option>5 ans et plus</option>
+                  Contrat *
+                  <select value={contrat} onChange={(event) => setContrat(event.target.value)} className="mt-2 h-11 w-full rounded-xl border border-border bg-background/70 px-3 text-sm text-foreground outline-none focus:border-accent/50">
+                    <option value="">Choisir le contrat</option>
+                    {CONTRATS.map((item) => <option key={item} value={item}>{item}</option>)}
                   </select>
                 </label>
+                <label className="text-xs font-semibold text-muted-foreground">
+                  Expérience *
+                  <select value={experience} onChange={(event) => setExperience(event.target.value)} className="mt-2 h-11 w-full rounded-xl border border-border bg-background/70 px-3 text-sm text-foreground outline-none focus:border-accent/50">
+                    <option value="">Choisir l’expérience</option><option>Débutant accepté</option><option>1 à 2 ans</option><option>2 à 5 ans</option><option>5 ans et plus</option>
+                  </select>
+                </label>
+                {TEMPORARY_OFFER_CONTRACTS.includes(contrat as (typeof TEMPORARY_OFFER_CONTRACTS)[number]) && (
+                  <label className="text-xs font-semibold text-muted-foreground">
+                    Durée exacte du contrat *
+                    <input value={dureeContrat} onChange={(event) => setDureeContrat(event.target.value)} className="mt-2 h-11 w-full rounded-xl border border-border bg-background/70 px-3 text-sm text-foreground outline-none focus:border-accent/50" placeholder="Ex. : 6 mois, du 01/09 au 28/02" />
+                  </label>
+                )}
+                {contrat === "CDD" && (
+                  <label className="text-xs font-semibold text-muted-foreground sm:col-span-2">
+                    Motif réel du recours au CDD *
+                    <input value={motifContratTemporaire} onChange={(event) => setMotifContratTemporaire(event.target.value)} className="mt-2 h-11 w-full rounded-xl border border-border bg-background/70 px-3 text-sm text-foreground outline-none focus:border-accent/50" placeholder="Ex. : remplacement d’une salariée absente" />
+                  </label>
+                )}
               </div>
 
               <div>
@@ -2596,18 +2877,19 @@ const OffresTab = ({
             <div className="space-y-5">
               <div><p className="text-xs font-semibold uppercase tracking-[0.2em] text-accent">Étape 2</p><h3 className="mt-2 text-xl font-bold">Précisez le profil</h3><p className="mt-1 text-sm text-muted-foreground">Ces détails rendent l’offre plus pertinente et évitent les informations inventées.</p></div>
               <div className="grid gap-4 sm:grid-cols-2">
-                <label className="text-xs font-semibold text-muted-foreground">Secteur d’activité<div className="mt-2"><SecteurSelect value={secteurOffre} onChange={setSecteurOffre} /></div></label>
+                <label className="text-xs font-semibold text-muted-foreground">Secteur d’activité *<div className="mt-2"><SecteurSelect value={secteurOffre} onChange={setSecteurOffre} /></div></label>
                 <label className="text-xs font-semibold text-muted-foreground">
                   Diplôme requis
                   <select value={diplome} onChange={(event) => setDiplome(event.target.value)} className="mt-2 h-11 w-full rounded-xl border border-border bg-background/70 px-3 text-sm text-foreground outline-none focus:border-accent/50">
-                    <option>Sans diplôme</option><option>CAP / BEP</option><option>Bac</option><option>Bac +2 (BTS, DUT)</option><option>Bac +3 (Licence)</option><option>Bac +5 (Master, Ingénieur)</option><option>Permis B</option><option>Permis C / CE</option><option>CACES</option>
+                    <option value="">Choisir explicitement</option><option>Aucun diplôme requis</option><option>CAP / BEP</option><option>Bac</option><option>Bac +2 (BTS, DUT)</option><option>Bac +3 (Licence)</option><option>Bac +5 (Master, Ingénieur)</option>
                   </select>
                 </label>
               </div>
               <label className="block text-xs font-semibold text-muted-foreground">Compétences et contraintes importantes<textarea value={competences} onChange={(event) => setCompetences(event.target.value)} rows={3} className="mt-2 w-full resize-none rounded-xl border border-border bg-background/70 px-4 py-3 text-sm leading-6 text-foreground outline-none focus:border-accent/50" placeholder="Ex. : relation client, autonomie, manutention, travail le week-end..." /></label>
-              <div className="grid gap-4 sm:grid-cols-2">
-                <label className="text-xs font-semibold text-muted-foreground">Salaire minimum brut mensuel<input type="number" value={salaireMin} onChange={(event) => setSalaireMin(event.target.value)} className="mt-2 h-11 w-full rounded-xl border border-border bg-background/70 px-3 text-sm text-foreground outline-none focus:border-accent/50" placeholder="Ex. : 2200" /></label>
-                <label className="text-xs font-semibold text-muted-foreground">Salaire maximum brut mensuel<input type="number" value={salaireMax} onChange={(event) => setSalaireMax(event.target.value)} className="mt-2 h-11 w-full rounded-xl border border-border bg-background/70 px-3 text-sm text-foreground outline-none focus:border-accent/50" placeholder="Ex. : 2600" /></label>
+              <div className="grid gap-4 sm:grid-cols-3">
+                <label className="text-xs font-semibold text-muted-foreground">Rémunération brute minimale<input min="0" step="0.01" type="number" value={salaireMin} onChange={(event) => setSalaireMin(event.target.value)} className="mt-2 h-11 w-full rounded-xl border border-border bg-background/70 px-3 text-sm text-foreground outline-none focus:border-accent/50" placeholder="Ex. : 2200" /></label>
+                <label className="text-xs font-semibold text-muted-foreground">Rémunération brute maximale<input min="0" step="0.01" type="number" value={salaireMax} onChange={(event) => setSalaireMax(event.target.value)} className="mt-2 h-11 w-full rounded-xl border border-border bg-background/70 px-3 text-sm text-foreground outline-none focus:border-accent/50" placeholder="Ex. : 2600" /></label>
+                <label className="text-xs font-semibold text-muted-foreground">Période{(salaireMin || salaireMax) ? " *" : ""}<select value={remunerationPeriode} onChange={(event) => setRemunerationPeriode(event.target.value)} className="mt-2 h-11 w-full rounded-xl border border-border bg-background/70 px-3 text-sm text-foreground outline-none focus:border-accent/50"><option value="">Choisir</option>{SALARY_PERIODS.map((period) => <option key={period.value} value={period.value}>{period.label}</option>)}</select></label>
               </div>
 
               <button type="button" onClick={() => setShowAdvancedDetails((current) => !current)} className="flex w-full items-center justify-between rounded-xl border border-border/70 bg-secondary/20 px-4 py-3 text-left text-sm font-semibold">
@@ -2662,7 +2944,7 @@ const OffresTab = ({
                 <p className="mt-2 text-sm leading-6 text-muted-foreground">Relisez l’aperçu, modifiez le texte si nécessaire puis publiez lorsque tout vous convient.</p>
                 <div className="mt-6 grid gap-3 sm:grid-cols-2">
                   <div className="rounded-xl border border-border/70 bg-secondary/20 p-4"><p className="text-xs text-muted-foreground">Poste</p><p className="mt-1 font-semibold">{poste || "À préciser"}</p></div>
-                  <div className="rounded-xl border border-border/70 bg-secondary/20 p-4"><p className="text-xs text-muted-foreground">Contrat</p><p className="mt-1 font-semibold">{contrat}</p></div>
+                  <div className="rounded-xl border border-border/70 bg-secondary/20 p-4"><p className="text-xs text-muted-foreground">Contrat</p><p className="mt-1 font-semibold">{contrat || "À préciser"}{dureeContrat ? ` · ${dureeContrat}` : ""}</p></div>
                   <div className="rounded-xl border border-border/70 bg-secondary/20 p-4"><p className="text-xs text-muted-foreground">Localisation</p><p className="mt-1 font-semibold">{localisation || "À préciser"}</p></div>
                   <div className="rounded-xl border border-border/70 bg-secondary/20 p-4"><p className="text-xs text-muted-foreground">Salaire</p><p className="mt-1 font-semibold">{salaryLabel}</p></div>
                 </div>
@@ -2674,13 +2956,13 @@ const OffresTab = ({
 
         <section className="dashboard-panel flex min-h-[620px] flex-col p-5 sm:p-6">
           <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-            <div><p className="text-xs font-semibold uppercase tracking-[0.2em] text-accent">Aperçu en direct</p><h3 className="mt-1 text-xl font-bold">Votre annonce</h3></div>
-            <span className={"w-fit rounded-full border px-3 py-1.5 text-xs font-semibold " + (completionPercent >= 80 ? "border-emerald-500/25 bg-emerald-500/10 text-emerald-600 dark:text-emerald-300" : "border-amber-500/25 bg-amber-500/10 text-amber-700 dark:text-amber-300")}>{offre ? "Prête" : "Complétée"} à {completionPercent} %</span>
+            <div><p className="text-xs font-semibold uppercase tracking-[0.2em] text-accent">Aperçu talent</p><h3 className="mt-1 text-xl font-bold">Ce que le candidat verra</h3></div>
+            <span className={"w-fit rounded-full border px-3 py-1.5 text-xs font-semibold " + (offerQuality.score >= 80 ? "border-emerald-500/25 bg-emerald-500/10 text-emerald-600 dark:text-emerald-300" : "border-amber-500/25 bg-amber-500/10 text-amber-700 dark:text-amber-300")}>Qualité {offerQuality.score} %</span>
           </div>
 
           <div className="mt-4 flex-1 rounded-xl border border-border/70 bg-background/60 p-4 sm:p-5">
             <div className="flex items-start justify-between gap-3 border-b border-border/60 pb-4">
-              <div className="min-w-0"><h4 className="truncate text-xl font-bold sm:text-2xl">{poste || "Intitulé du poste"}</h4><p className="mt-1 text-sm font-semibold text-accent">{entreprise || "Votre entreprise"}</p><p className="mt-1 text-xs text-muted-foreground">{localisation || "Localisation à préciser"} · {contrat} · {salaryLabel}</p></div>
+              <div className="min-w-0"><h4 className="truncate text-xl font-bold sm:text-2xl">{poste || "Intitulé du poste"}</h4><p className="mt-1 text-sm font-semibold text-accent">{entreprise || "Votre entreprise"}</p><p className="mt-1 text-xs text-muted-foreground">{localisation || "Localisation à préciser"} · {contrat || "Contrat à préciser"}{dureeContrat ? ` (${dureeContrat})` : ""} · {salaryLabel}</p></div>
               <button type="button" onClick={() => setCreationStep(1)} className="rounded-lg border border-border p-2 text-muted-foreground hover:bg-secondary hover:text-foreground" aria-label="Modifier les informations principales"><Pencil className="h-4 w-4" /></button>
             </div>
 
@@ -2689,15 +2971,56 @@ const OffresTab = ({
                 <div className="mb-3 flex items-center justify-between gap-3"><p className="text-sm font-semibold">Texte complet modifiable</p><Button variant="ghost-glow" size="sm" onClick={() => setEditingGeneratedOffer(false)}>Terminer</Button></div>
                 <textarea value={offre} onChange={(event) => setOffre(event.target.value)} className="min-h-[390px] w-full resize-none rounded-xl border border-border bg-background px-4 py-3 text-sm leading-6 outline-none focus:border-accent/50" />
               </div>
+            ) : offre ? (
+              <div className="mt-4">
+                <OfferDescription description={offre} />
+              </div>
             ) : (
               <div className="divide-y divide-border/60">
                 <div className="py-4"><div className="flex items-center justify-between gap-3"><h5 className="font-bold">Vos missions</h5><button type="button" onClick={() => offre ? setEditingGeneratedOffer(true) : setCreationStep(1)} className="rounded-lg border border-border p-2 text-muted-foreground hover:bg-secondary hover:text-foreground"><Pencil className="h-3.5 w-3.5" /></button></div><p className="mt-2 whitespace-pre-line text-sm leading-6 text-muted-foreground">{besoin || "Décrivez le besoin et les principales missions pour enrichir cette section."}</p></div>
-                <div className="py-4"><div className="flex items-center justify-between gap-3"><h5 className="font-bold">Profil recherché</h5><button type="button" onClick={() => offre ? setEditingGeneratedOffer(true) : setCreationStep(2)} className="rounded-lg border border-border p-2 text-muted-foreground hover:bg-secondary hover:text-foreground"><Pencil className="h-3.5 w-3.5" /></button></div><p className="mt-2 text-sm leading-6 text-muted-foreground">{competences || "Compétences à préciser"} · {experience}{diplome !== "Sans diplôme" ? " · " + diplome : ""}{permisRequis.length > 0 ? " · " + selectedPermis : ""}</p></div>
+                <div className="py-4"><div className="flex items-center justify-between gap-3"><h5 className="font-bold">Profil recherché</h5><button type="button" onClick={() => offre ? setEditingGeneratedOffer(true) : setCreationStep(2)} className="rounded-lg border border-border p-2 text-muted-foreground hover:bg-secondary hover:text-foreground"><Pencil className="h-3.5 w-3.5" /></button></div><p className="mt-2 text-sm leading-6 text-muted-foreground">{competences || "Compétences à préciser"} · {experience || "Expérience à préciser"}{diplome ? " · " + diplome : ""}{permisRequis.length > 0 ? " · " + selectedPermis : ""}</p></div>
                 <div className="py-4"><div className="flex items-center justify-between gap-3"><h5 className="font-bold">Ce que nous proposons</h5><button type="button" onClick={() => offre ? setEditingGeneratedOffer(true) : setCreationStep(2)} className="rounded-lg border border-border p-2 text-muted-foreground hover:bg-secondary hover:text-foreground"><Pencil className="h-3.5 w-3.5" /></button></div><p className="mt-2 text-sm leading-6 text-muted-foreground">{contrat} · {salaryLabel}{avantages.length > 0 ? " · " + selectedAdvantages : ""}</p></div>
               </div>
             )}
 
             {offre && !editingGeneratedOffer && <button type="button" onClick={() => setEditingGeneratedOffer(true)} className="mt-4 flex w-full items-center justify-center gap-2 rounded-xl border border-accent/25 bg-accent/5 px-4 py-3 text-sm font-semibold text-accent hover:bg-accent/10"><Pencil className="h-4 w-4" /> Modifier le texte complet</button>}
+          </div>
+
+          <div className="mt-4 rounded-xl border border-border/70 bg-secondary/20 p-4">
+            <div className="flex items-center justify-between gap-3">
+              <div>
+                <p className="text-sm font-semibold text-foreground">Contrôle avant publication</p>
+                <p className="mt-1 text-xs text-muted-foreground">{offerQuality.wordCount} mots · cohérence, gratuité et non-discrimination vérifiées</p>
+              </div>
+              {publicationReady ? <CheckCircle className="h-5 w-5 text-emerald-500" /> : <ShieldCheck className="h-5 w-5 text-amber-500" />}
+            </div>
+            <div className="mt-3 grid gap-2 sm:grid-cols-2">
+              {offerQuality.checks.slice(0, 8).map((check) => (
+                <div key={check.id} className="flex items-start gap-2 text-xs">
+                  {check.passed ? <CheckCircle className="mt-0.5 h-3.5 w-3.5 shrink-0 text-emerald-500" /> : <span className="mt-1 h-2 w-2 shrink-0 rounded-full bg-amber-500" />}
+                  <span className={check.passed ? "text-muted-foreground" : "font-medium text-foreground"}>{check.label}</span>
+                </div>
+              ))}
+            </div>
+            {offerCompliance.reviews.length > 0 && (
+              <div className="mt-3 rounded-lg border border-amber-500/25 bg-amber-500/10 p-3 text-xs text-amber-800 dark:text-amber-200">
+                <p className="font-semibold">À relire avant publication</p>
+                {offerCompliance.reviews.map((finding) => <p key={finding.id} className="mt-1">• {finding.message}</p>)}
+              </div>
+            )}
+            <label className="mt-4 flex cursor-pointer items-start gap-3 rounded-xl border border-primary/20 bg-primary/[0.05] p-3 text-sm">
+              <Checkbox checked={employerConfirmed} onCheckedChange={(checked) => setEmployerConfirmed(checked === true)} className="mt-0.5" />
+              <span>
+                <strong className="block text-foreground">Je certifie cette offre avant publication</strong>
+                <span className="mt-1 block text-xs leading-5 text-muted-foreground">L’emploi est réel, les informations sont exactes, la candidature est gratuite et les critères respectent la non-discrimination.</span>
+              </span>
+            </label>
+            {!publicationReady && (
+              <div className="mt-3 rounded-lg border border-red-500/20 bg-red-500/5 p-3 text-xs text-red-700 dark:text-red-300">
+                <p className="font-semibold">Publication bloquée</p>
+                {[...offerCompliance.blockers.map((finding) => finding.message), ...offerQuality.blockers.filter((label) => !offerCompliance.blockers.some((finding) => finding.label === label))].slice(0, 4).map((message) => <p key={message} className="mt-1">• {message}</p>)}
+              </div>
+            )}
           </div>
         </section>
       </div>
@@ -2705,8 +3028,8 @@ const OffresTab = ({
       <div className="dashboard-panel sticky bottom-3 z-20 flex flex-col gap-3 p-4 shadow-xl sm:flex-row sm:items-center sm:justify-end">
         <Button variant="ghost-glow" onClick={enregistrerBrouillon}><FileText className="mr-2 h-4 w-4" /> Enregistrer le brouillon</Button>
         <Button variant="ghost-glow" onClick={genererOffre} disabled={loading || !poste.trim()}><Sparkles className="mr-2 h-4 w-4" /> {offre ? "Améliorer avec l’IA" : "Générer avec l’IA"}</Button>
-        <Button variant="glow" onClick={publierOffre} disabled={!offre || publishing || activeOfferLimitReached || weeklyNewOfferLimitReached}>
-          <Send className="mr-2 h-4 w-4" /> {publishing ? "Publication..." : activeOfferLimitReached ? "Limite atteinte" : weeklyNewOfferLimitReached ? "Quota atteint" : "Publier l’offre"}
+        <Button variant="glow" onClick={publierOffre} disabled={!publicationReady || publishing || activeOfferLimitReached || weeklyNewOfferLimitReached}>
+          <Send className="mr-2 h-4 w-4" /> {publishing ? "Publication..." : activeOfferLimitReached ? "Limite atteinte" : weeklyNewOfferLimitReached ? "Quota atteint" : !publicationReady ? "Offre à compléter" : "Publier l’offre"}
         </Button>
       </div>
     </div>
@@ -2726,10 +3049,16 @@ const FormulaireModification = ({
   onCancel: () => void;
 }) => {
   const [titre, setTitre] = useState(offre.titre || "");
-  const [contrat, setContrat] = useState(offre.contrat || "CDI");
+  const [contrat, setContrat] = useState(ALLOWED_OFFER_CONTRACTS.includes(offre.contrat) ? offre.contrat : "");
   const [localisation, setLocalisation] = useState(offre.localisation || "");
+  const [secteur, setSecteur] = useState(offre.secteur || "");
+  const [experience, setExperience] = useState(offre.experience_requise || "");
+  const [diplome, setDiplome] = useState(offre.diplome || "");
+  const [dureeContrat, setDureeContrat] = useState(offre.duree_contrat || "");
+  const [motifContratTemporaire, setMotifContratTemporaire] = useState(offre.motif_contrat_temporaire || "");
   const [salaireMin, setSalaireMin] = useState(offre.salaire_min?.toString() || "");
   const [salaireMax, setSalaireMax] = useState(offre.salaire_max?.toString() || "");
+  const [remunerationPeriode, setRemunerationPeriode] = useState(offre.remuneration_periode || "");
   const [competences, setCompetences] = useState(offre.competences || "");
   const [description, setDescription] = useState(offre.description || "");
   const [urgent, setUrgent] = useState(offre.urgent || false);
@@ -2737,23 +3066,49 @@ const FormulaireModification = ({
     Array.isArray(offre.questions_preselection) ? offre.questions_preselection : [],
   );
   const [saving, setSaving] = useState(false);
+  const [employerConfirmed, setEmployerConfirmed] = useState(Boolean(offre.employer_certified_at));
 
   const sauvegarder = async () => {
-    if (!titre) return toast.error("Le titre est obligatoire");
+    const compliance = analyzeOfferCompliance({
+      title: titre,
+      description,
+      location: localisation,
+      contract: contrat,
+      sector: secteur,
+      experience,
+      duration: dureeContrat,
+      temporaryReason: motifContratTemporaire,
+      degree: diplome,
+      salaryMin: salaireMin,
+      salaryMax: salaireMax,
+      salaryPeriod: remunerationPeriode,
+      screeningQuestions,
+      employerConfirmed,
+    });
+    if (!compliance.canPublish) return toast.error(compliance.blockers[0].message);
     setSaving(true);
     try {
       const { error } = await supabase.from("offres").update({
         titre,
         contrat,
         localisation,
-        salaire_min: salaireMin ? parseInt(salaireMin) : null,
-        salaire_max: salaireMax ? parseInt(salaireMax) : null,
+        secteur,
+        experience_requise: experience,
+        diplome: diplome || null,
+        duree_contrat: dureeContrat || null,
+        motif_contrat_temporaire: motifContratTemporaire || null,
+        salaire_min: salaireMin ? Number(salaireMin) : null,
+        salaire_max: salaireMax ? Number(salaireMax) : null,
+        remuneration_periode: salaireMin && salaireMax ? remunerationPeriode : null,
         competences,
         description,
         urgent: entitlements.urgentBadge ? urgent : false,
         questions_preselection: entitlements.screeningQuestions
           ? screeningQuestions.map((question) => ({ ...question, label: question.label.trim() })).filter((question) => question.label)
           : [],
+        employer_certified_at: new Date().toISOString(),
+        employer_certification_version: "2026-08-09",
+        compliance_version: "2026-08-09",
       }).eq("id", offre.id);
       if (error) throw error;
       toast.success("Offre mise à jour !");
@@ -2766,7 +3121,7 @@ const FormulaireModification = ({
       <p className="text-sm font-semibold text-accent">Modifier l'offre</p>
       <div className="grid gap-3 md:grid-cols-2">
         <div className="col-span-2"><label className="text-xs text-muted-foreground mb-1 block">Titre du poste</label><input value={titre} onChange={(e) => setTitre(e.target.value)} className="w-full bg-secondary border border-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-accent/50" /></div>
-        <div><label className="text-xs text-muted-foreground mb-1 block">Contrat</label><select value={contrat} onChange={(e) => setContrat(e.target.value)} className="w-full bg-secondary border border-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-accent/50">{CONTRATS.map(c => <option key={c}>{c}</option>)}</select></div>
+        <div><label className="text-xs text-muted-foreground mb-1 block">Contrat *</label><select value={contrat} onChange={(e) => setContrat(e.target.value)} className="w-full bg-secondary border border-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-accent/50"><option value="">Choisir</option>{CONTRATS.map(c => <option key={c} value={c}>{c}</option>)}</select></div>
         <div>
           <label className="text-xs text-muted-foreground mb-1 block">Localisation</label>
           <LocationAutocompleteInput
@@ -2775,8 +3130,14 @@ const FormulaireModification = ({
             placeholder="Tapez une ville ou un code postal..."
           />
         </div>
-        <div><label className="text-xs text-muted-foreground mb-1 block">Salaire min (EUR)</label><input value={salaireMin} onChange={(e) => setSalaireMin(e.target.value)} type="number" className="w-full bg-secondary border border-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-accent/50" /></div>
-        <div><label className="text-xs text-muted-foreground mb-1 block">Salaire max (EUR)</label><input value={salaireMax} onChange={(e) => setSalaireMax(e.target.value)} type="number" className="w-full bg-secondary border border-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-accent/50" /></div>
+        <div><label className="text-xs text-muted-foreground mb-1 block">Secteur *</label><SecteurSelect value={secteur} onChange={setSecteur} /></div>
+        <div><label className="text-xs text-muted-foreground mb-1 block">Expérience *</label><select value={experience} onChange={(e) => setExperience(e.target.value)} className="w-full bg-secondary border border-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-accent/50"><option value="">Choisir</option><option>Débutant accepté</option><option>1 à 2 ans</option><option>2 à 5 ans</option><option>5 ans et plus</option></select></div>
+        {TEMPORARY_OFFER_CONTRACTS.includes(contrat as (typeof TEMPORARY_OFFER_CONTRACTS)[number]) && <div><label className="text-xs text-muted-foreground mb-1 block">Durée exacte *</label><input value={dureeContrat} onChange={(e) => setDureeContrat(e.target.value)} className="w-full bg-secondary border border-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-accent/50" placeholder="Ex. : 6 mois" /></div>}
+        {contrat === "CDD" && <div><label className="text-xs text-muted-foreground mb-1 block">Motif du CDD *</label><input value={motifContratTemporaire} onChange={(e) => setMotifContratTemporaire(e.target.value)} className="w-full bg-secondary border border-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-accent/50" /></div>}
+        <div><label className="text-xs text-muted-foreground mb-1 block">Diplôme</label><select value={diplome} onChange={(e) => setDiplome(e.target.value)} className="w-full bg-secondary border border-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-accent/50"><option value="">Choisir explicitement</option><option>Aucun diplôme requis</option><option>CAP / BEP</option><option>Bac</option><option>Bac +2 (BTS, DUT)</option><option>Bac +3 (Licence)</option><option>Bac +5 (Master, Ingénieur)</option></select></div>
+        <div><label className="text-xs text-muted-foreground mb-1 block">Période de rémunération</label><select value={remunerationPeriode} onChange={(e) => setRemunerationPeriode(e.target.value)} className="w-full bg-secondary border border-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-accent/50"><option value="">Choisir</option>{SALARY_PERIODS.map((period) => <option key={period.value} value={period.value}>{period.label}</option>)}</select></div>
+        <div><label className="text-xs text-muted-foreground mb-1 block">Rémunération min (EUR)</label><input min="0" step="0.01" value={salaireMin} onChange={(e) => setSalaireMin(e.target.value)} type="number" className="w-full bg-secondary border border-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-accent/50" /></div>
+        <div><label className="text-xs text-muted-foreground mb-1 block">Rémunération max (EUR)</label><input min="0" step="0.01" value={salaireMax} onChange={(e) => setSalaireMax(e.target.value)} type="number" className="w-full bg-secondary border border-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-accent/50" /></div>
         <div className="col-span-2"><label className="text-xs text-muted-foreground mb-1 block">Compétences</label><input value={competences} onChange={(e) => setCompetences(e.target.value)} className="w-full bg-secondary border border-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-accent/50" /></div>
         <div className="col-span-2"><label className="text-xs text-muted-foreground mb-1 block">Description</label><textarea value={description} onChange={(e) => setDescription(e.target.value)} rows={6} className="w-full bg-secondary border border-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-accent/50 resize-none" /></div>
         {entitlements.screeningQuestions && (
@@ -2829,6 +3190,10 @@ const FormulaireModification = ({
             </div>
           </div>
         )}
+        <label className="col-span-2 flex cursor-pointer items-start gap-3 rounded-xl border border-primary/20 bg-primary/[0.05] p-3 text-sm">
+          <Checkbox checked={employerConfirmed} onCheckedChange={(checked) => setEmployerConfirmed(checked === true)} className="mt-0.5" />
+          <span><strong className="block">Je confirme à nouveau l’exactitude de l’offre</strong><span className="mt-1 block text-xs text-muted-foreground">Emploi réel, candidature gratuite et critères non discriminatoires.</span></span>
+        </label>
         <button
           type="button"
           disabled={!entitlements.urgentBadge}
@@ -3007,8 +3372,17 @@ const MesOffresTab = ({ user, entitlements, refreshToken = 0, onOffresChanged, o
                     <span className="flex items-center gap-1"><MapPin className="w-3 h-3" /> {formatDisplayLabel(offre.localisation) || "Non précisée"}</span>
                     {offre.salaire_min && offre.salaire_max && <span className="flex items-center gap-1"><Euro className="w-3 h-3" /> {offre.salaire_min} - {offre.salaire_max}</span>}
                     {offre.diplome && !["Sans diplome", "Sans diplôme"].includes(offre.diplome) && <span className="flex items-center gap-1"><GraduationCap className="w-3 h-3" /> {formatDisplayLabel(offre.diplome)}</span>}
-                    <span className="flex items-center gap-1"><Calendar className="w-3 h-3" /> {new Date(offre.created_at).toLocaleDateString("fr-FR")}</span>
+                    <span className="flex items-center gap-1"><Calendar className="w-3 h-3" /> Publiée le {new Date(offre.created_at).toLocaleDateString("fr-FR")}</span>
+                    {offre.updated_at && new Date(offre.updated_at).getTime() > new Date(offre.created_at).getTime() + 60000 && <span>Modifiée le {new Date(offre.updated_at).toLocaleDateString("fr-FR")}</span>}
+                    {offre.public_reference && <span>Réf. {offre.public_reference}</span>}
                   </div>
+                  {offre.moderation_status === "suspended" && (
+                    <div className="mb-3 rounded-xl border border-red-500/25 bg-red-500/10 p-3 text-sm text-red-700 dark:text-red-300">
+                      <p className="font-semibold">Annonce suspendue après vérification</p>
+                      <p className="mt-1 text-xs leading-5">{formatStoredMessageText(offre.moderation_reason) || "Consultez le support pour connaître le motif de la décision."}</p>
+                      <a href={buildSupportMailto({ subject: `Contestation de modération ${offre.public_reference || offre.id}`, body: `Bonjour,\n\nJe demande le réexamen de la décision concernant l’offre ${offre.public_reference || offre.id}.\n\nÉléments complémentaires :\n` })} className="mt-2 inline-flex text-xs font-semibold underline underline-offset-4">Demander un réexamen</a>
+                    </div>
+                  )}
                   {offre.avantages && <p className="text-xs text-green-400 mb-2 flex items-center gap-1"><CheckCircle className="w-3 h-3" /> {formatDisplayList(offre.avantages)}</p>}
                   {offreEnEdition !== offre.id && <p className="text-xs leading-5 text-muted-foreground line-clamp-2">{getOfferDescriptionPreview(offre.description)}</p>}
                 </div>
@@ -3045,9 +3419,9 @@ const MesOffresTab = ({ user, entitlements, refreshToken = 0, onOffresChanged, o
                         <Pencil className="mr-1 h-4 w-4" />
                         {offreEnEdition === offre.id ? "Fermer l'édition" : "Modifier"}
                       </Button>
-                      <Button variant="ghost-glow" size="sm" onClick={() => toggleStatut(offre.id, offre.statut)} className="h-7 justify-center text-xs">
+                      <Button variant="ghost-glow" size="sm" disabled={offre.moderation_status === "suspended"} onClick={() => toggleStatut(offre.id, offre.statut)} className="h-7 justify-center text-xs">
                         {offre.statut === "active" ? <EyeOff className="mr-1 h-4 w-4" /> : <Eye className="mr-1 h-4 w-4" />}
-                        {offre.statut === "active" ? "Mettre en pause" : "Réactiver"}
+                        {offre.moderation_status === "suspended" ? "Réexamen requis" : offre.statut === "active" ? "Mettre en pause" : "Réactiver"}
                       </Button>
                       <ConfirmActionDialog
                         title="Supprimer cette annonce ?"
@@ -3892,8 +4266,32 @@ const DocumentsEntrepriseTab = () => {
         talentPoste = profilTalent?.poste || "";
       }
 
+      const { data: retentionRecords, error: retentionRecordsError } = await supabase.rpc(
+        "list_candidature_document_records",
+        { p_candidature_id: candidature.id },
+      );
+      const retentionMetadataAvailable = !retentionRecordsError;
+      if (retentionRecordsError && retentionRecordsError.code !== "PGRST202") {
+        console.error("document_retention_records_select_error", retentionRecordsError);
+      }
+
       const categories = await Promise.all(sharedCategories.map(async (cat) => {
-        const { data: ownDocs } = await supabase.storage.from("documents").list(`${user.id}/${cat.id}/${candidature.id}`);
+        let ownDocs: any[] = [];
+        if (retentionMetadataAvailable) {
+          ownDocs = (retentionRecords || [])
+            .filter((record) => record.retention_flow === "company_to_talent" && record.category === cat.id)
+            .map((record) => ({
+              name: record.original_file_name,
+              ownerId: record.owner_id,
+              sender: "entreprise",
+              storagePath: record.storage_path,
+              retentionRecord: record,
+              created_at: record.sent_at,
+            }));
+        } else {
+          const { data } = await supabase.storage.from("documents").list(`${user.id}/${cat.id}/${candidature.id}`);
+          ownDocs = (data || []).map((doc) => ({ ...doc, ownerId: user.id, sender: "entreprise" }));
+        }
         let partnerDocs: any[] = [];
 
         if (candidature.talent_id) {
@@ -3903,7 +4301,7 @@ const DocumentsEntrepriseTab = () => {
 
         return {
           ...cat,
-          ownDocs: (ownDocs || []).map((doc) => ({ ...doc, ownerId: user.id, sender: "entreprise" })),
+          ownDocs,
           partnerDocs: (partnerDocs || []).map((doc) => ({ ...doc, ownerId: candidature.talent_id, sender: "talent" })),
         };
       }));
@@ -3949,7 +4347,7 @@ const DocumentsEntrepriseTab = () => {
       const nomPropre = sanitizeStorageFileName(file.name);
       const path = `${user.id}/${categorie}/${candidatureId}/${Date.now()}_${nomPropre}`;
       await uploadPrivateDocument(path, file, { fileName: file.name, metadata: { categorie, candidatureId } });
-      toast.success("Document partagé ajouté !");
+      toast.success("Document transmis au talent pour 90 jours. Votre accès au fichier est maintenant fermé.");
       chargerDocuments();
     } catch (err: any) {
       toast.error(translateAppError(err?.message, "Impossible d'ajouter ce document partagé."));
@@ -3971,8 +4369,19 @@ const DocumentsEntrepriseTab = () => {
     if (!storagePath) return;
     try {
       await openPrivateDocument(storagePath);
+      await chargerDocuments();
     } catch (err: any) {
       toast.error(translateAppError(err?.message, "Impossible d'ouvrir ce document."));
+    }
+  };
+  const confirmerReceptionDocument = async (request: any) => {
+    if (!request.storage_path) return;
+    try {
+      const deleteAfter = await confirmDocumentReceipt(request.storage_path);
+      toast.success(`Réception confirmée. Suppression prévue le ${new Date(deleteAfter).toLocaleDateString("fr-FR")}.`);
+      await chargerDocuments();
+    } catch (err: any) {
+      toast.error(translateAppError(err?.message, "Impossible de confirmer la réception."));
     }
   };
   const supprimerDocument = async (categorie: string, nom: string, candidatureId?: string) => {
@@ -3989,7 +4398,10 @@ const DocumentsEntrepriseTab = () => {
     if (!user) return;
     const selectedKey = requestSelections[folder.id];
     const selectedDocument = REQUESTABLE_DOCUMENTS.find((document) => document.key === selectedKey);
-    if (!selectedDocument) return toast.error("Choisissez un document à demander.");
+    if (!selectedDocument) {
+      toast.error("Choisissez un document à demander.");
+      return;
+    }
 
     setRequestingFolder(folder.id);
     try {
@@ -4069,11 +4481,17 @@ const DocumentsEntrepriseTab = () => {
       name: request.file_name || request.document_label,
       category: "Pièce demandée",
       sharedBy: request.status === "uploaded" ? "Talent" : "Entreprise",
-      status: request.status === "uploaded" ? "Reçu" : "En attente",
-      statusClass: request.status === "uploaded"
+      status: request.status === "expired"
+        ? "Fichier supprimé"
+        : request.received_at
+          ? "Réception confirmée · 7 jours"
+          : request.status === "uploaded" ? "Reçu" : "En attente",
+      statusClass: request.status === "expired"
+        ? "border-slate-500/25 bg-slate-500/10 text-slate-400"
+        : request.status === "uploaded"
         ? "border-emerald-500/25 bg-emerald-500/10 text-emerald-400"
         : "border-amber-500/25 bg-amber-500/10 text-amber-300",
-      kind: request.status === "uploaded" ? "received-request" : "pending-request",
+      kind: request.status === "expired" ? "expired-request" : request.status === "uploaded" ? "received-request" : "pending-request",
       request,
     })),
     ...(selectedFolder.categories || []).flatMap((category: any) => [
@@ -4083,8 +4501,10 @@ const DocumentsEntrepriseTab = () => {
         category: category.label,
         categoryId: category.id,
         sharedBy: "Entreprise",
-        status: "Partagé",
-        statusClass: "border-sky-500/25 bg-sky-500/10 text-sky-400",
+        status: document.retentionRecord?.storage_deleted_at ? "Supprimé après 90 jours" : "Remis au Talent",
+        statusClass: document.retentionRecord?.storage_deleted_at
+          ? "border-slate-500/25 bg-slate-500/10 text-slate-400"
+          : "border-sky-500/25 bg-sky-500/10 text-sky-400",
         kind: "company-document",
         document,
       })),
@@ -4102,7 +4522,7 @@ const DocumentsEntrepriseTab = () => {
     ]),
   ] : [];
   const visibleCompactRows = compactDocumentRows.filter((row: any) => {
-    if (documentsView === "requests") return row.kind === "pending-request" || row.kind === "received-request";
+    if (documentsView === "requests") return row.kind === "pending-request" || row.kind === "received-request" || row.kind === "expired-request";
     if (documentsView === "shared") return row.kind === "company-document" || row.kind === "talent-document";
     return true;
   });
@@ -4262,17 +4682,40 @@ const DocumentsEntrepriseTab = () => {
 
               {showRequestComposer && (
                 <div className="mt-4 rounded-2xl border border-amber-500/20 bg-amber-500/[0.08] p-4">
+                  <p className="mb-3 text-xs leading-5 text-muted-foreground">
+                    Ce dossier est disponible uniquement après acceptation de la candidature. Demandez seulement une
+                    pièce nécessaire au poste ou à une formalité d’embauche précise. La Carte Vitale, la photo d’identité
+                    générale, le casier judiciaire et les demandes libres restent bloqués.
+                  </p>
+                  <p className="mb-3 rounded-xl border border-amber-500/20 bg-background/45 px-3 py-2 text-xs font-medium leading-5 text-foreground">
+                    {COMPANY_REQUEST_RETENTION_MESSAGE}
+                  </p>
                   <div className="flex flex-col gap-3 md:flex-row md:items-end">
                     <div className="flex-1">
                       <label className="mb-1.5 block text-xs font-semibold text-amber-300">Document à demander au candidat</label>
                       <select value={requestSelections[selectedFolder.id] || ""} onChange={(event) => setRequestSelections((current) => ({ ...current, [selectedFolder.id]: event.target.value }))} className="h-10 w-full rounded-xl border border-border bg-background px-3 text-sm outline-none focus:border-amber-500/40">
                         <option value="">Choisir un document</option>
-                        {REQUESTABLE_DOCUMENTS.filter((definition) => !(selectedFolder.documentRequests || []).some((request: any) => request.document_key === definition.key)).map((definition) => (
-                          <option key={definition.key} value={definition.key}>{definition.label}</option>
-                        ))}
+                        {REQUESTABLE_DOCUMENT_PHASES.map((phase) => {
+                          const definitions = REQUESTABLE_DOCUMENTS.filter((definition) =>
+                            definition.phase === phase.key
+                            && !(selectedFolder.documentRequests || []).some((request: any) => request.document_key === definition.key),
+                          );
+                          return definitions.length > 0 ? (
+                            <optgroup key={phase.key} label={phase.label}>
+                              {definitions.map((definition) => (
+                                <option key={definition.key} value={definition.key}>{definition.label}</option>
+                              ))}
+                            </optgroup>
+                          ) : null;
+                        })}
                       </select>
+                      {requestSelections[selectedFolder.id] && (
+                        <p className="mt-1.5 text-xs leading-5 text-muted-foreground">
+                          {REQUESTABLE_DOCUMENTS.find((definition) => definition.key === requestSelections[selectedFolder.id])?.desc}
+                        </p>
+                      )}
                     </div>
-                    <ConfirmActionDialog title="Valider la demande de document ?" description={`Le candidat ${selectedFolder.talentNom} verra cette demande dans son espace Documents.`} confirmLabel="Envoyer la demande" confirmVariant="glow" onConfirm={() => demanderDocument(selectedFolder)}>
+                    <ConfirmActionDialog title="Valider la demande de document ?" description={`Confirmez que cette pièce est nécessaire au poste ou aux formalités d’embauche. ${selectedFolder.talentNom} verra la demande dans son espace Documents.`} confirmLabel="Envoyer la demande" confirmVariant="glow" onConfirm={() => demanderDocument(selectedFolder)}>
                       <button type="button" disabled={!requestSelections[selectedFolder.id] || requestingFolder === selectedFolder.id || !documentsRequestsReady} className="inline-flex h-10 items-center justify-center rounded-xl bg-primary px-4 text-sm font-semibold text-primary-foreground disabled:cursor-not-allowed disabled:opacity-50">
                         {requestingFolder === selectedFolder.id ? "Envoi..." : "Envoyer la demande"}
                       </button>
@@ -4297,9 +4740,17 @@ const DocumentsEntrepriseTab = () => {
                       {uploading === `${shareCategory}-${selectedFolder.id}` ? "Ajout..." : "Choisir et partager"}
                     </Button>
                   </div>
-                  <p className="mt-2 text-xs text-muted-foreground">Le document sera visible uniquement par votre entreprise et ce talent.</p>
+                  <p className="mt-2 text-xs leading-5 text-muted-foreground">
+                    Le talent pourra télécharger ce document pendant 90 jours. Dès l’envoi terminé, votre entreprise
+                    conservera la trace de la transmission mais ne pourra plus ouvrir ni retélécharger le fichier.
+                  </p>
                 </div>
               )}
+
+              <div className="mt-4 flex items-start gap-3 rounded-xl border border-amber-500/20 bg-amber-500/[0.06] p-3">
+                <ShieldCheck className="mt-0.5 h-4 w-4 shrink-0 text-amber-400" />
+                <p className="text-xs leading-5 text-muted-foreground">{COMPANY_REQUEST_RETENTION_MESSAGE}</p>
+              </div>
 
               <div className="mt-4 overflow-hidden rounded-2xl border border-border/70">
                 <div className="overflow-x-auto">
@@ -4329,19 +4780,24 @@ const DocumentsEntrepriseTab = () => {
                           <td className="px-4 py-3"><span className={`inline-flex rounded-full border px-2.5 py-1 text-xs font-semibold ${row.statusClass}`}>{row.status}</span></td>
                           <td className="px-4 py-3">
                             <div className="flex justify-end gap-2">
-                              {row.kind === "received-request" && <Button variant="ghost-glow" size="sm" onClick={() => ouvrirCheminStockage(row.request.storage_path)}>Ouvrir</Button>}
+                              {row.kind === "received-request" && (
+                                <>
+                                  <Button variant="ghost-glow" size="sm" onClick={() => ouvrirCheminStockage(row.request.storage_path)}>Télécharger</Button>
+                                  {!row.request.received_at && (
+                                    <Button variant="ghost-glow" size="sm" onClick={() => confirmerReceptionDocument(row.request)}>J’ai bien reçu</Button>
+                                  )}
+                                </>
+                              )}
                               {row.kind === "pending-request" && (
                                 <ConfirmActionDialog title="Supprimer cette demande ?" description={`La demande « ${row.request.document_label} » sera retirée du dossier du candidat.`} confirmLabel="Supprimer" onConfirm={() => supprimerDemandeDocument(row.request)}>
                                   <button type="button" disabled={deletingRequest === row.request.id} className="inline-flex h-8 items-center rounded-lg border border-red-500/20 px-2.5 text-xs font-semibold text-red-400 hover:text-red-300"><Trash2 className="mr-1 h-3.5 w-3.5" />Supprimer</button>
                                 </ConfirmActionDialog>
                               )}
-                              {(row.kind === "company-document" || row.kind === "talent-document") && (
-                                <Button variant="ghost-glow" size="sm" onClick={() => telechargerDocument(row.kind === "company-document" ? user.id : row.document.ownerId, row.categoryId, row.document.name, selectedFolder.id)}>Ouvrir</Button>
+                              {row.kind === "talent-document" && (
+                                <Button variant="ghost-glow" size="sm" onClick={() => telechargerDocument(row.document.ownerId, row.categoryId, row.document.name, selectedFolder.id)}>Ouvrir</Button>
                               )}
-                              {row.kind === "company-document" && (
-                                <ConfirmActionDialog title="Supprimer ce document partagé ?" description="Le talent ne pourra plus consulter ce document." onConfirm={() => supprimerDocument(row.categoryId, row.document.name, selectedFolder.id)}>
-                                  <button type="button" aria-label="Supprimer le document partagé" className="p-1.5 text-red-400 hover:text-red-300"><Trash2 className="h-4 w-4" /></button>
-                                </ConfirmActionDialog>
+                              {row.kind === "company-document" && !row.document.retentionRecord?.storage_deleted_at && (
+                                <span className="text-xs text-muted-foreground">Accès remis au Talent</span>
                               )}
                             </div>
                           </td>

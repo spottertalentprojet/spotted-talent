@@ -6,6 +6,7 @@ import { Tables } from "@/integrations/supabase/types";
 import MfaChallengeGate from "@/components/MfaChallengeGate";
 import { isEmailConfirmed } from "@/lib/authSecurity";
 import { reportClientError } from "@/lib/errorMonitoring";
+import type { SecurityAccountRole } from "@/lib/mfaPolicy";
 
 type Profile = Tables<"profiles">;
 
@@ -177,10 +178,14 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
     setProfile(null);
   };
 
+  const accountRole = (
+    profile?.role || session?.user.user_metadata?.role
+  ) as SecurityAccountRole | undefined;
+
   return (
     <AuthContext.Provider value={{ session, user: session?.user ?? null, profile, loading, signOut }}>
       {shouldRequireMfaForPath(location.pathname) ? (
-        <MfaChallengeGate user={session?.user ?? null} loading={loading}>
+        <MfaChallengeGate user={session?.user ?? null} loading={loading} role={accountRole}>
           {children}
         </MfaChallengeGate>
       ) : (
