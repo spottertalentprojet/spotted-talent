@@ -10,6 +10,13 @@ const cleanupFunction = readFileSync(
   resolve(process.cwd(), "supabase/functions/cleanup-expired-documents/index.ts"),
   "utf8",
 );
+const schedulerMigration = readFileSync(
+  resolve(
+    process.cwd(),
+    "supabase/migrations/20260809172000_schedule_document_retention_cleanup.sql",
+  ),
+  "utf8",
+);
 
 describe("document retention database contract", () => {
   it("starts seven days at the first download or explicit confirmation", () => {
@@ -47,5 +54,10 @@ describe("document retention database contract", () => {
     expect(migration).toContain("cron.unschedule('spotted_talent_cleanup_expired_documents')");
     expect(migration).toContain("spotted_talent_cleanup_expired_documents_edge");
     expect(migration).toContain("DROP FUNCTION IF EXISTS public.cleanup_expired_documents");
+    expect(schedulerMigration).toContain("spotted_talent_cleanup_expired_documents_edge");
+    expect(schedulerMigration).toContain("'20 3 * * *'");
+    expect(schedulerMigration).toContain("vault.create_secret");
+    expect(schedulerMigration).not.toMatch(/[a-f0-9]{64}/);
+    expect(cleanupFunction).toContain('"validate_retention_job_secret"');
   });
 });

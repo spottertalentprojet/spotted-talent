@@ -33,14 +33,9 @@ serve(async (req) => {
     return jsonResponse(405, { error: "method_not_allowed" });
   }
 
-  const jobSecret = Deno.env.get("RETENTION_JOB_SECRET");
   const suppliedSecret =
     req.headers.get("x-retention-secret") ||
     req.headers.get("authorization")?.replace(/^Bearer\s+/i, "");
-
-  if (!jobSecret || suppliedSecret !== jobSecret) {
-    return jsonResponse(401, { error: "invalid_retention_job_secret" });
-  }
 
   const supabaseUrl = Deno.env.get("SUPABASE_URL");
   const serviceRoleKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY");
@@ -50,6 +45,28 @@ serve(async (req) => {
   }
 
   const admin = createClient(supabaseUrl, serviceRoleKey);
+
+  const jobSecret = Deno.env.get("RETENTION_JOB_SECRET");
+  let isAuthorized = Boolean(
+    suppliedSecret && jobSecret && suppliedSecret === jobSecret,
+  );
+
+  if (!isAuthorized && suppliedSecret) {
+    const { data: vaultAuthorized, error: vaultError } = await admin.rpc(
+      "validate_retention_job_secret",
+      { p_secret: suppliedSecret },
+    );
+
+    if (vaultError) {
+      return jsonResponse(500, { error: "retention_authorization_unavailable" });
+    }
+
+    isAuthorized = vaultAuthorized === true;
+  }
+
+  if (!isAuthorized) {
+    return jsonResponse(401, { error: "invalid_retention_job_secret" });
+  }
 
   const { data: expiredDocuments, error: selectError } = await admin
     .from("document_encryption_keys")
