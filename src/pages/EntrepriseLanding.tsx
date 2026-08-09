@@ -1,4 +1,5 @@
 import { Link } from "react-router-dom";
+import TrustpilotFooterBadge from "@/components/TrustpilotFooterBadge";
 import { Button } from "@/components/ui/button";
 import ThemeToggle from "@/components/ThemeToggle";
 import { Sparkles, Check, Wand2, Users, BarChart3, MessageSquare, Zap, Shield, ArrowRight } from "lucide-react";
@@ -366,15 +367,18 @@ const EntrepriseLanding = () => {
       </section>
 
       <footer className="border-t border-border/50 px-4 py-8">
-        <div className="mx-auto flex max-w-7xl flex-col items-center justify-between gap-4 sm:flex-row">
+        <div className="mx-auto grid max-w-7xl items-center gap-4 sm:grid-cols-[1fr_auto] xl:grid-cols-[1fr_auto_1fr]">
           <div className="flex items-center gap-2">
             <Sparkles className="h-5 w-5 text-primary" />
             <span className="font-bold gradient-text">Spotted Talent</span>
           </div>
-          <p className="text-xs text-muted-foreground">© 2026 Spotted Talent — La Ravoire, 73490</p>
-          <div className="flex flex-wrap justify-center gap-4">
+          <TrustpilotFooterBadge compact />
+          <div className="flex flex-col items-center gap-3 xl:items-end">
+            <p className="text-xs text-muted-foreground">© 2026 Spotted Talent — La Ravoire, 73490</p>
+            <div className="flex flex-wrap justify-center gap-4">
             <a href="/cgu" className="text-xs text-muted-foreground hover:text-foreground">Mentions légales & CGU</a>
             <a href="/confidentialite" className="text-xs text-muted-foreground hover:text-foreground">Confidentialité</a>
+            </div>
           </div>
         </div>
       </footer>
