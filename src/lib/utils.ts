@@ -101,7 +101,12 @@ export function sanitizeStorageFileName(fileName: string): string {
     .replace(/^_+|_+$/g, "")
     .slice(0, 140);
 
-  return cleaned || `document_${Date.now()}`;
+  const withoutDuplicateExtension = cleaned.replace(
+    /(\.[a-zA-Z0-9]{1,10})(?:\1)+$/i,
+    "$1",
+  );
+
+  return withoutDuplicateExtension || `document_${Date.now()}`;
 }
 
 export function validateDocumentFile(file: File): string | null {

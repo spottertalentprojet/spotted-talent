@@ -231,31 +231,35 @@ export async function openPrivateDocument(storagePath: string, options: Document
 
   if (!data?.signedUrl) return;
 
-  if (encryptionMetadata?.key_b64 && encryptionMetadata?.iv_b64) {
-    const encryptedResponse = await fetch(data.signedUrl);
-    if (!encryptedResponse.ok) {
-      throw new Error("Impossible de récupérer ce document sécurisé.");
-    }
+  const documentResponse = await fetch(data.signedUrl);
+  if (!documentResponse.ok) {
+    throw new Error("Impossible de récupérer ce document sécurisé.");
+  }
 
+  let documentBlob: Blob;
+
+  if (encryptionMetadata?.key_b64 && encryptionMetadata?.iv_b64) {
     const decryptedBytes = await decryptDocumentBytes(
-      await encryptedResponse.arrayBuffer(),
+      await documentResponse.arrayBuffer(),
       encryptionMetadata.key_b64,
       encryptionMetadata.iv_b64,
     );
-    const decryptedBlob = new Blob([decryptedBytes], {
+    documentBlob = new Blob([decryptedBytes], {
       type: encryptionMetadata.original_mime_type || "application/octet-stream",
     });
-    await recordSuccessfulDocumentDownload(
-      storagePath,
-      options,
-      encryptionMetadata.original_file_name,
-    );
-    const objectUrl = URL.createObjectURL(decryptedBlob);
-    window.open(objectUrl, "_blank", "noopener,noreferrer");
-    window.setTimeout(() => URL.revokeObjectURL(objectUrl), 60_000);
-    return;
+  } else {
+    // Les anciens documents peuvent ne pas encore avoir de métadonnées de
+    // chiffrement. L'URL signée reste interne et n'apparaît jamais dans la
+    // barre d'adresse du navigateur.
+    documentBlob = await documentResponse.blob();
   }
 
-  await recordSuccessfulDocumentDownload(storagePath, options, options.fileName);
-  window.open(data.signedUrl, "_blank", "noopener,noreferrer");
+  await recordSuccessfulDocumentDownload(
+    storagePath,
+    options,
+    encryptionMetadata?.original_file_name || options.fileName,
+  );
+  const objectUrl = URL.createObjectURL(documentBlob);
+  window.open(objectUrl, "_blank", "noopener,noreferrer");
+  window.setTimeout(() => URL.revokeObjectURL(objectUrl), 60_000);
 }

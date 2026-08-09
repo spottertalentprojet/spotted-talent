@@ -1,5 +1,13 @@
+import { readFileSync } from "node:fs";
+import { resolve } from "node:path";
 import { describe, expect, it } from "vitest";
 import { getDocumentPathParts } from "@/lib/documentSecurity";
+import { sanitizeStorageFileName } from "@/lib/utils";
+
+const documentSecuritySource = readFileSync(
+  resolve(process.cwd(), "src/lib/documentSecurity.ts"),
+  "utf8",
+);
 
 describe("getDocumentPathParts", () => {
   it("ne confond pas le nom d'un document interne avec une candidature", () => {
@@ -27,5 +35,17 @@ describe("getDocumentPathParts", () => {
       relationId: "candidature-id",
       documentRequestId: "demande-id",
     });
+  });
+
+  it("masque toujours l'URL signée derrière une URL Blob locale", () => {
+    expect(documentSecuritySource).toContain("await fetch(data.signedUrl)");
+    expect(documentSecuritySource).toContain("URL.createObjectURL(documentBlob)");
+    expect(documentSecuritySource).not.toContain("window.open(data.signedUrl");
+  });
+
+  it("supprime une extension répétée dans le nom de stockage", () => {
+    expect(sanitizeStorageFileName("CV Professionnel.pdf.pdf")).toBe("CV_Professionnel.pdf");
+    expect(sanitizeStorageFileName("contrat.DOCX.DOCX")).toBe("contrat.DOCX");
+    expect(sanitizeStorageFileName("archive.tar.gz")).toBe("archive.tar.gz");
   });
 });
