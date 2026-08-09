@@ -79,7 +79,7 @@ const helpTopics: HelpTopic[] = [
     description: "Présenter son parcours et améliorer la pertinence des offres proposées.",
     audience: "talent",
     icon: UserRound,
-    actionLabel: "Ouvrir Mon Profil",
+    actionLabel: "Ouvrir mon profil",
     actionTo: "/talent/dashboard?tab=profile",
     questions: [
       {
@@ -136,7 +136,7 @@ const helpTopics: HelpTopic[] = [
     description: "Analyser un CV et préparer une lettre personnalisée dans le même espace.",
     audience: "talent",
     icon: FileSearch,
-    actionLabel: "Ouvrir CV & Lettre",
+    actionLabel: "Ouvrir CV et lettre",
     actionTo: "/talent/dashboard?tab=candidature",
     questions: [
       {
@@ -171,7 +171,7 @@ const helpTopics: HelpTopic[] = [
       {
         question: "Un talent peut-il démarcher librement une entreprise par message ?",
         answer:
-          "Non. La messagerie n'est pas un chat public. L'entreprise ouvre l'échange à partir d'une candidature reçue ; le talent peut ensuite répondre tant que l'échange reste ouvert.",
+          "Non. La messagerie n'est pas un chat public. L'entreprise ouvre l'échange à partir d'une candidature reçue. Le talent peut ensuite répondre tant que l'échange reste ouvert.",
       },
       {
         question: "Pourquoi la zone de réponse peut-elle être bloquée ?",
@@ -351,7 +351,7 @@ const helpTopics: HelpTopic[] = [
       {
         question: "Comment signaler une offre problématique ?",
         answer:
-          "Utilisez le bouton de signalement présent sur l'offre et sélectionnez le motif approprié. Le signalement est enregistré puis examiné humainement ; il ne provoque pas automatiquement la suppression de l'annonce.",
+          "Utilisez le bouton de signalement présent sur l'offre et sélectionnez le motif approprié. Le signalement est enregistré puis examiné par une personne. Il ne provoque pas automatiquement la suppression de l'annonce.",
       },
       {
         question: "Comment supprimer mon compte ou exercer mes droits ?",
@@ -610,7 +610,7 @@ const Aide = () => {
 
         <div className="flex flex-wrap items-center justify-center gap-x-5 gap-y-2 border-t border-border/60 pt-6 text-sm text-muted-foreground">
           <Link to="/cgu" className="hover:text-foreground hover:underline">CGU</Link>
-          <Link to="/cgv" className="hover:text-foreground hover:underline">CGV Entreprises</Link>
+          <Link to="/cgv" className="hover:text-foreground hover:underline">CGV entreprises</Link>
           <Link to="/confidentialite" className="hover:text-foreground hover:underline">Politique de confidentialité</Link>
           <Link to="/" className="hover:text-foreground hover:underline">Accueil</Link>
         </div>

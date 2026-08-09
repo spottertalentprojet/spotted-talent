@@ -1,5 +1,6 @@
 import { Link } from "react-router-dom";
 import { Sparkles } from "lucide-react";
+import { buildSupportMailto } from "@/lib/contact";
 
 const Footer = () => (
   <footer className="border-t border-border/50 px-4 py-12 sm:px-6 lg:px-8">
@@ -10,18 +11,18 @@ const Footer = () => (
       </Link>
       <div className="flex flex-wrap justify-center gap-6 text-sm text-muted-foreground">
         <Link to="/aide" className="transition-colors hover:text-foreground">
-          Aide & FAQ
+          Aide et FAQ
         </Link>
         <Link to="/cgu" className="transition-colors hover:text-foreground">
-          Mentions légales & CGU
+          Mentions légales et CGU
         </Link>
         <Link to="/cgv" className="transition-colors hover:text-foreground">
-          CGV Entreprises
+          CGV entreprises
         </Link>
         <Link to="/confidentialite" className="transition-colors hover:text-foreground">
           Confidentialité
         </Link>
-        <a href="mailto:contact@spottedtalent.fr" className="transition-colors hover:text-foreground">
+        <a href={buildSupportMailto("Contact depuis le site Spotted Talent")} className="transition-colors hover:text-foreground">
           Contact
         </a>
       </div>

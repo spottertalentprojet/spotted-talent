@@ -22,11 +22,12 @@ const CGV = () => (
       </div>
 
       <div className="rounded-2xl border border-amber-500/30 bg-amber-500/10 p-5 text-sm leading-6 text-foreground">
-        <p className="font-semibold">Conditions préparées pour l’ouverture commerciale du 1er septembre 2026</p>
+        <p className="font-semibold">Conditions publiées avant l’ouverture commerciale prochaine.</p>
         <p className="mt-1 text-muted-foreground">
-          L’éditeur est Yousri Frigui, entrepreneur individuel, SIREN 838 378 156, dont l’établissement principal
-          est situé 6 R du Pre Hibou, 73490 La Ravoire. La formule, le prix, le cycle et la date de fin d’essai sont
-          récapitulés avant la confirmation du paiement sécurisé.
+          Ces conditions s’appliqueront à toute commande dès l’activation des abonnements. L’éditeur est Yousri
+          Frigui, entrepreneur individuel, SIREN 838 378 156, dont l’établissement principal est situé 6 R du Pre
+          Hibou, 73490 La Ravoire. La formule, le prix, le cycle et la date de fin d’essai seront récapitulés avant la
+          confirmation du paiement sécurisé.
         </p>
       </div>
 
@@ -83,7 +84,7 @@ const CGV = () => (
 
       <Section title="5. Droit de rétractation professionnel">
         <p>
-          Les offres sont conclues exclusivement avec des professionnels pour les besoins de leur activité ; elles ne
+          Les offres sont conclues exclusivement avec des professionnels pour les besoins de leur activité. Elles ne
           bénéficient donc pas du droit de rétractation réservé aux consommateurs. Si une règle impérative étend
           exceptionnellement ce droit au client, notamment pour un contrat hors établissement répondant aux conditions
           de l’article L. 221-3 du Code de la consommation, cette règle demeure pleinement applicable.
@@ -94,7 +95,7 @@ const CGV = () => (
         <p>
           L’abonnement est mensuel ou annuel selon le choix effectué et se renouvelle pour une période identique.
           L’entreprise peut demander sa résiliation depuis le portail de facturation accessible dans son dashboard.
-          La résiliation prend effet à la fin de la période déjà facturée ; le service reste disponible jusque-là.
+          La résiliation prend effet à la fin de la période déjà facturée. Le service reste disponible jusque-là.
         </p>
         <p>
           Le système actuel n’applique pas de prorata ni de remboursement automatique d’une période commencée, sauf

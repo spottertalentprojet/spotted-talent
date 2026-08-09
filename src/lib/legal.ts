@@ -3,7 +3,7 @@ export const TERMS_VERSION_LABEL = "09/08/2026 — version 2";
 export const PRIVACY_NOTICE_VERSION = "2026-08-09-v2";
 export const PRIVACY_NOTICE_VERSION_LABEL = "09/08/2026 — version 2";
 export const SALES_TERMS_VERSION = "2026-08-09";
-export const LEGAL_EFFECTIVE_DATE = "2026-09-01";
+export const LEGAL_EFFECTIVE_DATE = "2026-08-09";
 
 export const PENDING_LEGAL_ACKNOWLEDGEMENT_KEY =
   "spottedtalent_pending_legal_acknowledgement";

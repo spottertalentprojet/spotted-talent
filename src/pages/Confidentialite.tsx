@@ -16,16 +16,16 @@ const Confidentialite = () => (
         <p className="mb-3 text-sm font-semibold uppercase tracking-[0.24em] text-primary">Données personnelles</p>
         <h1 className="mb-2 text-3xl font-bold gradient-text">Politique de confidentialité</h1>
         <p className="text-muted-foreground">
-          Version {PRIVACY_NOTICE_VERSION_LABEL}. Cette page décrit les traitements
-          actuellement prévus pour Spotted Talent.
+          Version {PRIVACY_NOTICE_VERSION_LABEL}. Cette page décrit les traitements mis en œuvre ou prévus pour
+          fournir le service Spotted Talent.
         </p>
       </div>
 
       <div className="rounded-2xl border border-amber-500/30 bg-amber-500/10 p-5 text-sm leading-6 text-foreground">
-        <p className="font-semibold">Mise en service commerciale prévue à compter du 1er septembre 2026</p>
+        <p className="font-semibold">Politique applicable dès sa publication.</p>
         <p className="mt-1 text-muted-foreground">
-          Les traitements décrits ci-dessous doivent être relus dans le cadre de la finalisation RGPD avant toute
-          commercialisation large. Les données de test doivent rester fictives, en particulier les documents administratifs.
+          Le service est actuellement en phase de préparation avant son ouverture commerciale prochaine. Cette
+          politique sera mise à jour si les traitements, les prestataires ou les fonctionnalités évoluent.
         </p>
       </div>
 
@@ -47,7 +47,7 @@ const Confidentialite = () => (
           Une adresse électronique, un mot de passe pour la connexion par e-mail, le rôle du compte et un nom
           d’affichage sont nécessaires pour créer un compte. Un numéro de téléphone est actuellement demandé lors de
           l’inscription classique. Une entreprise doit fournir les informations nécessaires à sa vérification avant
-          d’accéder à la facturation réelle.
+          de souscrire un abonnement payant.
         </p>
         <p>
           Le CV, l’adresse détaillée, la présentation, les compétences, la mobilité et les documents métier sont
@@ -58,14 +58,14 @@ const Confidentialite = () => (
 
       <Section title="3. Catégories de données collectées">
         <ul className="list-disc space-y-1 pl-6">
-          <li>compte : identité déclarée, e-mail, téléphone, rôle, dates de création et de connexion ;</li>
-          <li>profil talent : poste, secteur, contrat, compétences, localisation, disponibilité, CV et lettre ;</li>
-          <li>recrutement : offres, candidatures, réponses, statuts, messages et notes liées au dossier ;</li>
-          <li>pièces métier autorisées : diplôme, certification, permis, habilitation ou autorisation de travail ;</li>
-          <li>entreprise : nom, SIRET, adresse, secteur, contacts, logo et informations de facturation ;</li>
-          <li>paiement : formule, statut, identifiants Stripe et factures, sans numéro complet de carte ;</li>
-          <li>sécurité : identifiants techniques, journaux d’accès documentaire, erreurs et informations de session ;</li>
-          <li>IA : texte strictement utile envoyé volontairement pour une analyse ou une génération.</li>
+          <li><strong>Compte :</strong> identité déclarée, e-mail, téléphone, rôle, dates de création et de connexion.</li>
+          <li><strong>Profil talent :</strong> poste, secteur, contrat, compétences, localisation, disponibilité, CV et lettre.</li>
+          <li><strong>Recrutement :</strong> offres, candidatures, réponses, statuts, messages et notes liées au dossier.</li>
+          <li><strong>Pièces métier autorisées :</strong> diplôme, certification, permis, habilitation ou autorisation de travail.</li>
+          <li><strong>Entreprise :</strong> nom, SIRET, adresse, secteur, contacts, logo et informations de facturation.</li>
+          <li><strong>Paiement :</strong> formule, statut, identifiants Stripe et factures, sans numéro complet de carte.</li>
+          <li><strong>Sécurité :</strong> identifiants techniques, journaux d’accès documentaire, erreurs et informations de session.</li>
+          <li><strong>IA :</strong> texte strictement utile envoyé volontairement pour une analyse ou une génération.</li>
         </ul>
       </Section>
 
@@ -123,8 +123,8 @@ const Confidentialite = () => (
         <p>
           Pour préparer l’embauche du candidat retenu, ce dossier peut également recevoir une pièce d’identité, un
           RIB, une attestation de droits à l’Assurance Maladie ou un justificatif de domicile lorsqu’une finalité
-          administrative précise le nécessite. Les demandes de copie de Carte Vitale, photo d’identité générale,
-          copie de casier judiciaire et document administratif libre restent bloquées.
+          administrative précise le nécessite. Les demandes de copie de Carte Vitale, de photographie d’identité sans
+          finalité précise, de copie de casier judiciaire et de document administratif libre restent bloquées.
         </p>
       </Section>
 
@@ -136,39 +136,40 @@ const Confidentialite = () => (
           privé n’est pas rendu public par défaut.
         </p>
         <ul className="list-disc space-y-1 pl-6">
-          <li><strong>Supabase</strong> : base, authentification, stockage privé et fonctions serveur ;</li>
-          <li><strong>Vercel</strong> : hébergement de l’application web et journaux techniques ;</li>
-          <li><strong>Stripe</strong> : paiement, abonnement, portail client et factures ;</li>
-          <li><strong>Resend</strong> : courriels transactionnels ;</li>
-          <li><strong>Groq</strong> : traitement IA déclenché par l’utilisateur ;</li>
-          <li><strong>Google</strong> : OAuth si l’utilisateur choisit la connexion Google.</li>
+          <li><strong>Supabase :</strong> base, authentification, stockage privé et fonctions serveur.</li>
+          <li><strong>Vercel :</strong> hébergement de l’application web et journaux techniques.</li>
+          <li><strong>Stripe :</strong> paiement, abonnement, portail client et factures.</li>
+          <li><strong>Resend :</strong> courriels transactionnels.</li>
+          <li><strong>Groq :</strong> traitement IA déclenché par l’utilisateur.</li>
+          <li><strong>Google :</strong> OAuth si l’utilisateur choisit la connexion Google.</li>
         </ul>
       </Section>
 
       <Section title="8. Transferts hors Espace économique européen">
         <p>
           Certains prestataires sont établis ou peuvent traiter des données hors de l’Espace économique européen.
-          Avant le lancement commercial, leurs lieux de traitement, accords de sous-traitance, sous-traitants
-          ultérieurs et garanties de transfert devront être vérifiés et conservés. Selon le prestataire, les garanties
-          peuvent reposer sur une décision d’adéquation ou des clauses contractuelles types.
+          Lorsqu’un transfert est nécessaire, il doit reposer sur un mécanisme reconnu par le RGPD, tel qu’une
+          décision d’adéquation ou des clauses contractuelles types. Les garanties applicables et les sous-traitants
+          ultérieurs sont suivis dans la documentation interne de Spotted Talent.
         </p>
       </Section>
 
       <Section title="9. Durées de conservation">
         <ul className="list-disc space-y-1 pl-6">
-          <li>compte et profil : pendant l’utilisation du service, puis suppression lors de la suppression du compte sauf obligation contraire ;</li>
-          <li>inactivité : rappels vers 23 et 29 jours, puis suspension à 30 jours ; la suspension ne supprime pas le compte ;</li>
-          <li>document envoyé par un talent à la demande d’une entreprise : suppression du fichier sept jours après la première réception confirmée, ou trente jours après l’envoi sans réception ;</li>
-          <li>contrat, fiche de paie ou document d’intérim envoyé par une entreprise au talent : disponibilité pendant quatre-vingt-dix jours après l’envoi ;</li>
-          <li>métadonnées de transmission : conservation limitée à la traçabilité de la demande, de la réception et de la suppression ;</li>
-          <li>candidatures non retenues : objectif maximal de deux ans après le dernier contact si le talent en a été informé ;</li>
-          <li>messages : durée du dossier de recrutement, puis suppression ou anonymisation avec ce dossier ;</li>
-          <li>factures et pièces comptables : durée légale applicable, généralement dix ans ;</li>
-          <li>journaux de sécurité : durée proportionnée au besoin de preuve et de sécurité, avec purge à formaliser avant production.</li>
+          <li><strong>Compte et profil :</strong> pendant l’utilisation du service, puis suppression avec le compte, sauf obligation contraire.</li>
+          <li><strong>Inactivité :</strong> rappels vers 23 et 29 jours, puis suspension à 30 jours. La suspension ne supprime pas le compte.</li>
+          <li><strong>Document envoyé par un talent à la demande d’une entreprise :</strong> suppression du fichier sept jours après la première réception confirmée, ou trente jours après l’envoi sans réception.</li>
+          <li><strong>Contrat, fiche de paie ou document d’intérim envoyé par une entreprise au talent :</strong> disponibilité pendant quatre-vingt-dix jours après l’envoi.</li>
+          <li><strong>Métadonnées de transmission :</strong> conservation limitée à la traçabilité de la demande, de la réception et de la suppression.</li>
+          <li><strong>Candidatures non retenues :</strong> objectif maximal de deux ans après le dernier contact, sous réserve que le talent en ait été informé.</li>
+          <li><strong>Messages :</strong> pendant la durée du dossier de recrutement, puis suppression ou anonymisation avec ce dossier.</li>
+          <li><strong>Factures et pièces comptables :</strong> pendant la durée légale applicable, généralement dix ans.</li>
+          <li><strong>Journaux de sécurité :</strong> pendant la durée nécessaire à la détection, à l’analyse et à la preuve des incidents, puis suppression ou anonymisation selon le calendrier interne.</li>
         </ul>
         <p>
           Les suppressions documentaires de sept, trente et quatre-vingt-dix jours sont traitées quotidiennement par
-          une fonction serveur. Les autres durées non encore automatisées sont identifiées dans le registre interne.
+          une fonction serveur. Les autres suppressions sont exécutées conformément aux durées indiquées et aux
+          obligations légales applicables.
         </p>
       </Section>
 
@@ -188,11 +189,11 @@ const Confidentialite = () => (
 
       <Section title="11. Sécurité">
         <ul className="list-disc space-y-1 pl-6">
-          <li>confirmation de l’adresse électronique et double authentification obligatoire pour les comptes entreprise, facultative pour les talents ;</li>
-          <li>contrôles d’accès par utilisateur, rôle et candidature ;</li>
-          <li>stockage privé, liens temporaires et validation des fichiers ;</li>
-          <li>journalisation des ouvertures, téléchargements et suppressions de documents ;</li>
-          <li>secrets conservés côté serveur et nettoyage planifié des documents arrivés à échéance.</li>
+          <li>Confirmation de l’adresse électronique et double authentification obligatoire pour les comptes entreprise, facultative pour les talents.</li>
+          <li>Contrôles d’accès par utilisateur, rôle et candidature.</li>
+          <li>Stockage privé, liens temporaires et validation des fichiers.</li>
+          <li>Journalisation des ouvertures, téléchargements et suppressions de documents.</li>
+          <li>Secrets conservés côté serveur et nettoyage planifié des documents arrivés à échéance.</li>
         </ul>
       </Section>
 
@@ -212,8 +213,9 @@ const Confidentialite = () => (
 
       <Section title="13. Incident de sécurité">
         <p>
-          Tout incident est analysé, contenu et documenté. La CNIL est notifiée dans les 72 heures lorsque le risque
-          l’exige, et les personnes concernées sont informées lorsque le risque pour leurs droits et libertés est élevé.
+          Tout incident est analysé, contenu et documenté. Lorsqu’une violation est susceptible d’engendrer un risque,
+          la CNIL est notifiée dans les meilleurs délais et, si possible, dans les 72 heures après sa découverte. Les
+          personnes concernées sont informées lorsque le risque pour leurs droits et libertés est élevé.
         </p>
       </Section>
 

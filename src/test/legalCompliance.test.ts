@@ -1,12 +1,25 @@
+import { readFileSync } from "node:fs";
+import { resolve } from "node:path";
 import { describe, expect, it } from "vitest";
 import { REQUESTABLE_DOCUMENTS } from "@/lib/documentRequests";
 import {
   getLegalSignupMetadata,
+  LEGAL_EFFECTIVE_DATE,
   PRIVACY_NOTICE_VERSION,
   SALES_TERMS_VERSION,
   TERMS_VERSION,
 } from "@/lib/legal";
 import { buildSupportMailto, SUPPORT_EMAIL } from "@/lib/contact";
+
+const publicInformationPages = [
+  "src/pages/Aide.tsx",
+  "src/pages/CGU.tsx",
+  "src/pages/CGV.tsx",
+  "src/pages/Confidentialite.tsx",
+  "src/components/Footer.tsx",
+]
+  .map((filePath) => readFileSync(resolve(process.cwd(), filePath), "utf8"))
+  .join("\n");
 
 describe("legal compliance helpers", () => {
   it("attache les versions juridiques courantes à une inscription", () => {
@@ -49,5 +62,16 @@ describe("legal compliance helpers", () => {
     expect(buildSupportMailto("Besoin d'aide")).toBe(
       "mailto:contact@spottedtalent.fr?subject=Besoin%20d'aide",
     );
+  });
+
+  it("présente une ouverture prochaine sans date commerciale obsolète", () => {
+    expect(LEGAL_EFFECTIVE_DATE).toBe("2026-08-09");
+    expect(publicInformationPages).not.toContain("1er septembre 2026");
+    expect(publicInformationPages).not.toContain("01/09/2026");
+    expect(publicInformationPages).toContain("ouverture commerciale prochaine");
+  });
+
+  it("évite les points-virgules résiduels dans les textes publics", () => {
+    expect(publicInformationPages).not.toMatch(/\s;/);
   });
 });

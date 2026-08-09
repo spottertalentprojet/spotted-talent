@@ -15,21 +15,22 @@ const CGU = () => (
     <main className="mx-auto max-w-5xl space-y-8">
       <div>
         <p className="mb-3 text-sm font-semibold uppercase tracking-[0.24em] text-primary">Cadre légal</p>
-        <h1 className="mb-2 text-3xl font-bold gradient-text">Mentions légales & conditions d’utilisation</h1>
+        <h1 className="mb-2 text-3xl font-bold gradient-text">Mentions légales et conditions générales d’utilisation</h1>
         <p className="text-muted-foreground">
           Version {TERMS_VERSION_LABEL} — applicable à compter du {LEGAL_EFFECTIVE_DATE.split("-").reverse().join("/")}.
         </p>
       </div>
 
       <div className="rounded-2xl border border-amber-500/30 bg-amber-500/10 p-5 text-sm leading-6 text-foreground">
-        <p className="font-semibold">Version préparée pour l’ouverture commerciale du 1er septembre 2026.</p>
+        <p className="font-semibold">Version applicable dès sa publication.</p>
         <p className="mt-1 text-muted-foreground">
-          Cette version remplace les versions antérieures à sa date d’effet. Les abonnements Entreprise sont en outre
-          soumis aux CGV présentées avant la commande.
+          Le service est en phase de préparation avant son ouverture commerciale prochaine. Cette version remplace
+          les versions antérieures à sa date d’effet. Les abonnements Entreprise sont également soumis aux CGV
+          présentées avant la commande.
         </p>
       </div>
 
-      <Section title="1. Éditeur du projet">
+      <Section title="1. Éditeur du site">
         <p>
           Éditeur : <strong>Yousri Frigui, entrepreneur individuel</strong><br />
           Nom du service : <strong>Spotted Talent</strong><br />
@@ -86,9 +87,9 @@ const CGU = () => (
 
       <Section title="5. Utilisation autorisée">
         <p>
-          Sont interdits les contenus illicites, trompeurs, discriminatoires, usurpés, malveillants ou sans lien avec
-          l’emploi. Il est également interdit de contourner les limites du service, d’accéder aux données d’un tiers
-          ou d’extraire massivement les profils.
+          Sont interdits les contenus illicites, trompeurs, discriminatoires, malveillants, usurpant l’identité d’un
+          tiers ou sans lien avec l’emploi. Il est également interdit de contourner les limites du service, d’accéder
+          aux données d’un tiers ou d’extraire massivement les profils.
         </p>
         <p>
           Un compte peut être limité ou suspendu en cas d’abus, de fraude, de non-paiement, de risque de sécurité ou
@@ -97,8 +98,8 @@ const CGU = () => (
         <p>
           Toute offre comporte un mécanisme de signalement permettant d’indiquer notamment une discrimination, une
           offre trompeuse ou fictive, une candidature payante, une fraude ou une annonce expirée. Le signalement est
-          enregistré et fait l’objet d’un examen humain ; il n’entraîne pas, à lui seul, la suppression automatique
-          du contenu. Spotted Talent peut demander des précisions utiles sans exiger de donnée sensible.
+          enregistré et fait l’objet d’un examen humain. Il n’entraîne pas, à lui seul, la suppression automatique du
+          contenu. Spotted Talent peut demander des précisions utiles sans exiger de donnée sensible.
         </p>
         <p>
           Une décision de suspension, de maintien ou de rétablissement est motivée et journalisée. L’entreprise
@@ -140,24 +141,24 @@ const CGU = () => (
           parties de la candidature concernée.
         </p>
         <p>
-          Les demandes de copie de Carte Vitale, photo d’identité générale, copie de casier judiciaire ou document
-          administratif libre restent bloquées. Un cas particulier imposé par un texte ou une profession réglementée
-          doit faire l’objet d’un traitement distinct et préalablement validé.
+          Les demandes de copie de Carte Vitale, de photographie d’identité sans finalité précise, de copie de casier
+          judiciaire ou de document administratif libre restent bloquées. Un cas particulier imposé par un texte ou
+          une profession réglementée doit faire l’objet d’un traitement distinct et préalablement validé.
         </p>
         <p>
           <strong>Durée de conservation.</strong> Un document transmis par un talent en réponse à une demande
-          d'entreprise est automatiquement supprimé du service sept jours après sa réception confirmée par
-          l'entreprise destinataire, ou après trente jours si aucune réception n'a été confirmée. Seules les
+          d’entreprise est automatiquement supprimé du service sept jours après sa réception confirmée par
+          l’entreprise destinataire, ou après trente jours si aucune réception n’a été confirmée. Seules les
           métadonnées de la demande (nature du document, dates de transmission, de réception et de suppression) sont
           conservées à des fins de traçabilité.
         </p>
         <p>
-          <strong>Documents transmis au talent.</strong> Lorsqu'une entreprise transmet un document à un talent, ce
+          <strong>Documents transmis au talent.</strong> Lorsqu’une entreprise transmet un document à un talent, ce
           document reste disponible sur le service pendant quatre-vingt-dix jours à compter de son envoi, puis est
-          automatiquement supprimé. Spotted Talent n'est pas le canal officiel de remise de ces documents et n'agit
-          qu'à titre de passerelle pratique ; le talent conserve la faculté de solliciter directement son entreprise
-          pour toute remise ultérieure. Une fois un document transmis, l'entreprise expéditrice ne conserve pas
-          d'accès à ce document.
+          automatiquement supprimé. Spotted Talent n’est pas le canal officiel de remise de ces documents et n’agit
+          qu’à titre de passerelle pratique. Le talent conserve la faculté de solliciter directement son entreprise
+          pour toute remise ultérieure. Une fois un document transmis, l’entreprise expéditrice ne conserve pas
+          d’accès à ce document.
         </p>
       </Section>
 
@@ -184,10 +185,10 @@ const CGU = () => (
 
       <Section title="10. Abonnements professionnels">
         <p>
-          Les abonnements professionnels sont destinés à être ouverts à compter du début d’activité déclaré, le
-          1er septembre 2026, après validation des informations de facturation et des conditions commerciales. Le
-          fonctionnement prévu pour les entreprises est décrit dans les{" "}
-          <Link to="/cgv" className="text-primary hover:underline">CGV Entreprises</Link>. Les montants et taxes
+          Les abonnements professionnels seront activés lors de l’ouverture commerciale annoncée sur la plateforme,
+          après validation des informations de facturation et des conditions commerciales. Leur fonctionnement est
+          décrit dans les{" "}
+          <Link to="/cgv" className="text-primary hover:underline">CGV entreprises</Link>. Les montants et taxes
           définitifs sont toujours affichés avant validation dans Stripe.
         </p>
       </Section>
@@ -209,7 +210,7 @@ const CGU = () => (
         <p>
           Aucune stipulation ne limite les droits impératifs d’un utilisateur ni la responsabilité qui ne peut être
           exclue par la loi. Pour les clients professionnels, les exclusions et le plafond contractuel applicables
-          figurent dans les CGV Entreprises.
+          figurent dans les CGV entreprises.
         </p>
       </Section>
 
