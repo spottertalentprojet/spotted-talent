@@ -3,15 +3,31 @@ import { useNavigate } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Sparkles, Users, Building2, Target, FileText, LogOut, BarChart3, Lock, Mail, ShieldAlert, Ban, CheckCircle, RotateCcw } from "lucide-react";
+import { Sparkles, Users, Building2, Target, FileText, LogOut, BarChart3, Lock, Mail, ShieldAlert, Ban, CheckCircle, RotateCcw, MessageSquareText } from "lucide-react";
 import { toast } from "sonner";
 import { translateAuthError } from "@/lib/authMessages";
 import { formatStoredMessageText } from "@/lib/utils";
 import AccountSecurityPanel from "@/components/AccountSecurityPanel";
 import PlatformSecurityAdminPanel from "@/components/PlatformSecurityAdminPanel";
 import type { User } from "@supabase/supabase-js";
+import { ACCOUNT_DELETION_REASON_LABELS, type AccountDeletionReason } from "@/lib/accountDeletion";
 
 const ADMIN_EMAIL = "contact@spottedtalent.fr";
+
+type AccountDeletionSummary = {
+  departure_reason: string;
+  deletion_count: number;
+};
+
+type RecentAccountDeletionFeedback = {
+  requested_at: string;
+  departure_reason: string;
+  departure_feedback: string | null;
+  result: string;
+};
+
+const getDepartureReasonLabel = (reason: string) =>
+  ACCOUNT_DELETION_REASON_LABELS[reason as AccountDeletionReason] || "Motif non renseigné";
 
 const Admin = () => {
   const navigate = useNavigate();
@@ -30,6 +46,8 @@ const Admin = () => {
   const [offerReports, setOfferReports] = useState<any[]>([]);
   const [moderationReasons, setModerationReasons] = useState<Record<string, string>>({});
   const [moderatingReportId, setModeratingReportId] = useState<string | null>(null);
+  const [deletionSummary, setDeletionSummary] = useState<AccountDeletionSummary[]>([]);
+  const [recentDeletionFeedback, setRecentDeletionFeedback] = useState<RecentAccountDeletionFeedback[]>([]);
 
   useEffect(() => {
     const verifierAdmin = async () => {
@@ -108,6 +126,14 @@ const Admin = () => {
       .order("created_at", { ascending: false });
     if (reportsError) console.error("offer_reports_admin_load_error", reportsError);
     setOfferReports(reportsData || []);
+    const [summaryResponse, recentFeedbackResponse] = await Promise.all([
+      supabase.rpc("get_account_deletion_feedback_summary", { p_days: 90 }),
+      supabase.rpc("get_recent_account_deletion_feedback", { p_limit: 20 }),
+    ]);
+    if (summaryResponse.error) console.error("account_deletion_summary_load_error", summaryResponse.error);
+    if (recentFeedbackResponse.error) console.error("account_deletion_feedback_load_error", recentFeedbackResponse.error);
+    setDeletionSummary((summaryResponse.data || []) as AccountDeletionSummary[]);
+    setRecentDeletionFeedback((recentFeedbackResponse.data || []) as RecentAccountDeletionFeedback[]);
     const { count: nbCands } = await supabase.from("candidatures").select("*", { count: "exact", head: true });
     const { count: nbMsgs } = await supabase.from("messages").select("*", { count: "exact", head: true });
     setStats({
@@ -202,6 +228,7 @@ const Admin = () => {
     { id: "entreprises", label: `Entreprises (${stats.entreprises})`, icon: Building2 },
     { id: "offres", label: `Offres (${stats.offres})`, icon: Target },
     { id: "moderation", label: `Modération (${offerReports.filter((report) => ["pending", "under_review"].includes(report.status)).length})`, icon: ShieldAlert },
+    { id: "departures", label: "Motifs de départ", icon: MessageSquareText },
     { id: "security", label: "Sécurité", icon: Lock },
   ];
 
@@ -420,6 +447,58 @@ const Admin = () => {
                 })}
               </div>
             )}
+          </div>
+        )}
+
+        {activeTab === "departures" && (
+          <div>
+            <div className="mb-6">
+              <h2 className="text-2xl font-bold">Pourquoi les talents quittent la plateforme</h2>
+              <p className="mt-2 max-w-3xl text-sm leading-6 text-muted-foreground">
+                Retours facultatifs et pseudonymisés recueillis lors d'une suppression effective de compte. Aucun nom, e-mail ou identifiant de compte n'est affiché ici.
+              </p>
+            </div>
+
+            <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
+              {deletionSummary.length === 0 ? (
+                <div className="glass-card p-6 sm:col-span-2 xl:col-span-3">
+                  <p className="font-semibold">Aucun départ enregistré sur les 90 derniers jours</p>
+                  <p className="mt-1 text-sm text-muted-foreground">Les tendances apparaîtront ici dès qu'un talent partagera un motif.</p>
+                </div>
+              ) : deletionSummary.map((entry) => (
+                <div key={entry.departure_reason} className="glass-card p-5">
+                  <p className="text-sm leading-5 text-muted-foreground">{getDepartureReasonLabel(entry.departure_reason)}</p>
+                  <p className="mt-3 text-3xl font-bold gradient-text">{entry.deletion_count}</p>
+                  <p className="mt-1 text-xs text-muted-foreground">sur les 90 derniers jours</p>
+                </div>
+              ))}
+            </div>
+
+            <div className="glass-card mt-6 p-6">
+              <div className="mb-4 flex items-center gap-2">
+                <MessageSquareText className="h-5 w-5 text-primary" />
+                <h3 className="font-semibold">Précisions récentes</h3>
+              </div>
+              {recentDeletionFeedback.filter((entry) => entry.departure_feedback).length === 0 ? (
+                <p className="text-sm text-muted-foreground">Aucune précision écrite n'a encore été transmise.</p>
+              ) : (
+                <div className="space-y-3">
+                  {recentDeletionFeedback.filter((entry) => entry.departure_feedback).map((entry, index) => (
+                    <div key={`${entry.requested_at}-${index}`} className="rounded-xl border border-border/60 bg-secondary/35 p-4">
+                      <div className="flex flex-col gap-1 sm:flex-row sm:items-center sm:justify-between">
+                        <p className="text-sm font-semibold">{getDepartureReasonLabel(entry.departure_reason)}</p>
+                        <time className="text-xs text-muted-foreground" dateTime={entry.requested_at}>
+                          {new Date(entry.requested_at).toLocaleDateString("fr-FR")}
+                        </time>
+                      </div>
+                      <p className="mt-2 whitespace-pre-wrap text-sm leading-6 text-muted-foreground">
+                        {formatStoredMessageText(entry.departure_feedback || "")}
+                      </p>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
           </div>
         )}
 

@@ -10,6 +10,19 @@ const corsHeaders = {
 
 const CONFIRMATION_PHRASE = "SUPPRIMER MON COMPTE";
 const ACTIVE_STRIPE_STATUSES = new Set(["trialing", "active", "past_due", "unpaid", "paused"]);
+const DEPARTURE_REASONS = new Set([
+  "found_job",
+  "not_enough_relevant_offers",
+  "difficult_to_use",
+  "technical_issue",
+  "privacy_concerns",
+  "too_many_notifications",
+  "no_longer_needed",
+  "recreate_account",
+  "other",
+  "prefer_not_to_say",
+]);
+const MAX_DEPARTURE_FEEDBACK_LENGTH = 500;
 
 const jsonResponse = (status: number, body: Record<string, unknown>) =>
   new Response(JSON.stringify(body), {
@@ -24,6 +37,11 @@ const sha256 = async (value: string) => {
     .map((byte) => byte.toString(16).padStart(2, "0"))
     .join("");
 };
+
+const redactContactDetails = (value: string) => value
+  .replace(/[\w.+-]+@[\w.-]+\.[A-Za-z]{2,}/g, "[e-mail masqué]")
+  .replace(/(?:https?:\/\/|www\.)\S+/gi, "[lien masqué]")
+  .replace(/(?:\+33|0)[\s.-]?[1-9](?:[\s.-]?\d{2}){4}/g, "[téléphone masqué]");
 
 type StorageObject = {
   id?: string | null;
@@ -92,7 +110,11 @@ serve(async (req) => {
   const authorization = req.headers.get("Authorization");
   if (!authorization) return jsonResponse(401, { error: "unauthorized" });
 
-  let body: { confirmation?: unknown } = {};
+  let body: {
+    confirmation?: unknown;
+    departureReason?: unknown;
+    departureFeedback?: unknown;
+  } = {};
   try {
     body = await req.json();
   } catch {
@@ -105,6 +127,32 @@ serve(async (req) => {
       message: `Saisissez exactement « ${CONFIRMATION_PHRASE} » pour confirmer.`,
     });
   }
+
+  const departureReason = body.departureReason === undefined || body.departureReason === ""
+    ? "prefer_not_to_say"
+    : body.departureReason;
+  if (typeof departureReason !== "string" || !DEPARTURE_REASONS.has(departureReason)) {
+    return jsonResponse(400, {
+      error: "invalid_departure_reason",
+      message: "Le motif de départ sélectionné n'est pas reconnu.",
+    });
+  }
+
+  if (body.departureFeedback !== undefined && body.departureFeedback !== null && typeof body.departureFeedback !== "string") {
+    return jsonResponse(400, { error: "invalid_departure_feedback" });
+  }
+  const rawDepartureFeedback = typeof body.departureFeedback === "string"
+    ? body.departureFeedback.trim()
+    : "";
+  if (rawDepartureFeedback.length > MAX_DEPARTURE_FEEDBACK_LENGTH) {
+    return jsonResponse(400, {
+      error: "departure_feedback_too_long",
+      message: `La précision ne doit pas dépasser ${MAX_DEPARTURE_FEEDBACK_LENGTH} caractères.`,
+    });
+  }
+  const departureFeedback = rawDepartureFeedback
+    ? redactContactDetails(rawDepartureFeedback)
+    : null;
 
   const authClient = createClient(supabaseUrl, supabaseAnonKey, {
     global: { headers: { Authorization: authorization } },
@@ -134,6 +182,8 @@ serve(async (req) => {
     .insert({
       account_fingerprint: accountFingerprint,
       account_role: profile?.role || null,
+      departure_reason: profile?.role === "talent" ? departureReason : null,
+      departure_feedback: profile?.role === "talent" ? departureFeedback : null,
       result: "started",
       details: { invoice_count: invoices?.length || 0 },
     })
