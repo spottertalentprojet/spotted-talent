@@ -39,6 +39,7 @@ import {
   Eye,
   RefreshCw,
   Flag,
+  CircleHelp,
   type LucideIcon,
 } from "lucide-react";
 import {
@@ -1117,6 +1118,14 @@ const TalentDashboard = () => {
           ))}
         </nav>
         <div className="border-t border-border/70 p-3">
+          <button
+            type="button"
+            onClick={() => navigate("/aide?role=talent")}
+            className="dashboard-nav-item mb-1 w-full"
+          >
+            <CircleHelp className="h-4 w-4" />
+            <span>Centre d'aide</span>
+          </button>
           <a
             href={buildSupportMailto(`Support Talent - ${profile?.full_name || user?.email || "Compte Talent"}`)}
             className="dashboard-nav-item mb-2"

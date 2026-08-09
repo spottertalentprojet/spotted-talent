@@ -9,7 +9,7 @@ import ConfirmActionDialog from "@/components/ConfirmActionDialog";
 import AccountSecurityPanel from "@/components/AccountSecurityPanel";
 import ThemeToggle from "@/components/ThemeToggle";
 import OfferDescription, { getOfferDescriptionPreview } from "@/components/OfferDescription";
-import { Sparkles, Wand2, Users, BarChart3, LogOut, Building, Building2, Plus, FileText, Camera, Trash2, CheckCircle, Eye, EyeOff, Send, MessageSquare, ChevronDown, ChevronUp, Search, MapPin, Euro, GraduationCap, Calendar, Briefcase, Wrench, Mail, Check, X, Pencil, Menu, ArrowLeft, CreditCard, Lock, Download, ShieldCheck, Image as ImageIcon } from "lucide-react";
+import { Sparkles, Wand2, Users, BarChart3, LogOut, Building, Building2, Plus, FileText, Camera, Trash2, CheckCircle, Eye, EyeOff, Send, MessageSquare, ChevronDown, ChevronUp, Search, MapPin, Euro, GraduationCap, Calendar, Briefcase, Wrench, Mail, Check, X, Pencil, Menu, ArrowLeft, CreditCard, Lock, Download, ShieldCheck, CircleHelp, Image as ImageIcon } from "lucide-react";
 import { useEffect, useMemo, useState, useRef } from "react";
 import { toast } from "sonner";
 import { supabase } from "@/integrations/supabase/client";
@@ -909,6 +909,14 @@ const EntrepriseDashboard = () => {
           )}
         </nav>
         <div className="border-t border-border/50 p-4">
+          <button
+            type="button"
+            onClick={() => navigate("/aide?role=entreprise")}
+            className="dashboard-nav-item mb-1 w-full"
+          >
+            <CircleHelp className="h-4 w-4" />
+            <span>Centre d'aide</span>
+          </button>
           <a
             href={buildSupportMailto(`Support Spotted Talent - ${profile?.full_name || "Entreprise"}`)}
             className="dashboard-nav-item mb-2"
