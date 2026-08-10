@@ -4,6 +4,7 @@ import { AlertTriangle, CheckCircle, KeyRound, MailCheck, RefreshCw, ShieldCheck
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { Textarea } from "@/components/ui/textarea";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -18,8 +19,11 @@ import {
 import { supabase } from "@/integrations/supabase/client";
 import {
   ACCOUNT_DELETION_CONFIRMATION,
+  ACCOUNT_DELETION_FEEDBACK_MAX_LENGTH,
+  ACCOUNT_DELETION_REASON_OPTIONS,
   clearAccountLocalState,
   isAccountDeletionConfirmed,
+  normalizeAccountDeletionFeedback,
 } from "@/lib/accountDeletion";
 import { reportClientError } from "@/lib/errorMonitoring";
 import { translateAuthError } from "@/lib/authMessages";
@@ -119,6 +123,8 @@ const AccountSecurityPanel = ({
   const [code, setCode] = useState("");
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
   const [deleteConfirmation, setDeleteConfirmation] = useState("");
+  const [deleteReason, setDeleteReason] = useState("");
+  const [deleteFeedback, setDeleteFeedback] = useState("");
   const [deletingAccount, setDeletingAccount] = useState(false);
 
   const confirmedEmail = useMemo(() => emailIsConfirmed(user), [user]);
@@ -226,8 +232,13 @@ const AccountSecurityPanel = ({
 
     setDeletingAccount(true);
     try {
+      const departureFeedback = normalizeAccountDeletionFeedback(deleteReason, deleteFeedback);
       const { data, error } = await supabase.functions.invoke("delete-account", {
-        body: { confirmation: ACCOUNT_DELETION_CONFIRMATION },
+        body: {
+          confirmation: ACCOUNT_DELETION_CONFIRMATION,
+          departureReason: role === "talent" ? departureFeedback.reason : undefined,
+          departureFeedback: role === "talent" ? departureFeedback.feedback : undefined,
+        },
       });
       if (error) throw error;
       if (!data?.ok) throw new Error("account_deletion_failed");
@@ -398,7 +409,11 @@ const AccountSecurityPanel = ({
             onOpenChange={(open) => {
               if (deletingAccount) return;
               setDeleteDialogOpen(open);
-              if (!open) setDeleteConfirmation("");
+              if (!open) {
+                setDeleteConfirmation("");
+                setDeleteReason("");
+                setDeleteFeedback("");
+              }
             }}
           >
             <AlertDialogTrigger asChild>
@@ -419,6 +434,46 @@ const AccountSecurityPanel = ({
                   </span>
                 </AlertDialogDescription>
               </AlertDialogHeader>
+              {role === "talent" && (
+                <div className="space-y-3 rounded-xl border border-border bg-secondary/30 p-4">
+                  <div>
+                    <label htmlFor="account-deletion-reason" className="text-sm font-semibold text-foreground">
+                      Pourquoi quittez-vous Spotted Talent ? <span className="font-normal text-muted-foreground">(facultatif)</span>
+                    </label>
+                    <p className="mt-1 text-xs leading-5 text-muted-foreground">
+                      Votre réponse nous aide à améliorer la plateforme. Elle n'est associée ni à votre nom ni à votre e-mail.
+                    </p>
+                  </div>
+                  <select
+                    id="account-deletion-reason"
+                    value={deleteReason}
+                    onChange={(event) => setDeleteReason(event.target.value)}
+                    disabled={deletingAccount}
+                    className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm text-foreground ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
+                  >
+                    <option value="">Sélectionner un motif (facultatif)</option>
+                    {ACCOUNT_DELETION_REASON_OPTIONS.map((option) => (
+                      <option key={option.value} value={option.value}>{option.label}</option>
+                    ))}
+                  </select>
+                  <div>
+                    <Textarea
+                      value={deleteFeedback}
+                      onChange={(event) => setDeleteFeedback(event.target.value.slice(0, ACCOUNT_DELETION_FEEDBACK_MAX_LENGTH))}
+                      maxLength={ACCOUNT_DELETION_FEEDBACK_MAX_LENGTH}
+                      rows={3}
+                      placeholder="Une précision pour nous aider à progresser (facultatif)"
+                      aria-label="Précision facultative sur la suppression du compte"
+                      disabled={deletingAccount}
+                      className="resize-none"
+                    />
+                    <div className="mt-1 flex items-start justify-between gap-3 text-[11px] leading-4 text-muted-foreground">
+                      <span>N'indiquez ni nom, e-mail, téléphone ni information sensible.</span>
+                      <span className="shrink-0">{deleteFeedback.length}/{ACCOUNT_DELETION_FEEDBACK_MAX_LENGTH}</span>
+                    </div>
+                  </div>
+                </div>
+              )}
               <Input
                 value={deleteConfirmation}
                 onChange={(event) => setDeleteConfirmation(event.target.value)}

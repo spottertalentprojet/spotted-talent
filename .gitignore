@@ -30,6 +30,7 @@ test-results/
 .vercel-cli-home
 .npm-cache
 supabase/.temp
+supabase/.branches
 .env*.local
 
 .env

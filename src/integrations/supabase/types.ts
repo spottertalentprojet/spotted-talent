@@ -1039,6 +1039,26 @@ export type Database = {
           updated_at: string
         }[]
       }
+      get_account_deletion_feedback_summary: {
+        Args: {
+          p_days?: number
+        }
+        Returns: {
+          deletion_count: number
+          departure_reason: string
+        }[]
+      }
+      get_recent_account_deletion_feedback: {
+        Args: {
+          p_limit?: number
+        }
+        Returns: {
+          departure_feedback: string | null
+          departure_reason: string
+          requested_at: string
+          result: string
+        }[]
+      }
       platform_admin_has_mfa: {
         Args: Record<PropertyKey, never>
         Returns: boolean

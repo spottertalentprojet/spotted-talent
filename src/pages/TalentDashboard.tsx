@@ -66,6 +66,7 @@ import {
   stripTalentAvailabilityMetadata,
   type TalentAvailabilityType,
 } from "@/lib/talentAvailability";
+import { calculateMatchingResult, type MatchingResult } from "@/lib/matching";
 
 // ─── Formatage de date relative en français ───────────────────────────────────
 const formatDateRelative = (date: string): string => {
@@ -2844,28 +2845,13 @@ const CVTab = ({ onScoreUpdate, compact = false, onAnalysisComplete }: any) => {
 };
 
 // ─── Score matching ───────────────────────────────────────────────────────────
-const calculerScore = (offre: any, profil: any): number => {
-  if (!profil) return 0;
-  let score = 0;
-  if (offre.secteur && profil.secteur && offre.secteur.toLowerCase() === profil.secteur.toLowerCase()) score += 35;
-  if (offre.contrat && profil.contrat && offre.contrat.toLowerCase() === profil.contrat.toLowerCase()) score += 25;
-  if (offre.localisation && profil.localisation && offre.localisation.toLowerCase().includes(profil.localisation.toLowerCase())) score += 20;
-  if (offre.permis_requis && profil.permis) {
-    const permisOffre = offre.permis_requis.split(",").map((p: string) => p.trim().toLowerCase());
-    const permisTalent = typeof profil.permis === "string" ? profil.permis.split(",").map((p: string) => p.trim().toLowerCase()) : (profil.permis || []).map((p: string) => p.toLowerCase());
-    const matches = permisOffre.filter((p: string) => permisTalent.includes(p));
-    if (permisOffre.length > 0) score += Math.round((matches.length / permisOffre.length) * 15);
+const getBadgeScore = (score: number, matching?: MatchingResult) => {
+  if (matching && !matching.meetsRequiredPermits) {
+    return {
+      label: "Prérequis permis manquant",
+      className: "bg-amber-500/15 text-amber-400 border border-amber-500/30",
+    };
   }
-  if (offre.competences && profil.competences) {
-    const motsOffre = offre.competences.toLowerCase().split(/[,\s]+/);
-    const motsTalent = profil.competences.toLowerCase().split(/[,\s]+/);
-    const matches = motsOffre.filter((m: string) => m.length > 2 && motsTalent.some((t: string) => t.includes(m) || m.includes(t)));
-    if (matches.length > 0) score += Math.min(5, matches.length * 2);
-  }
-  return Math.min(100, score);
-};
-
-const getBadgeScore = (score: number) => {
   if (score >= 70) return { label: `${score}% match`, className: "bg-green-500/20 text-green-400 border border-green-500/30" };
   if (score >= 40) return { label: `${score}% match`, className: "bg-amber-500/20 text-amber-400 border border-amber-500/30" };
   return { label: `${score}% match`, className: "bg-secondary text-muted-foreground border border-border" };
@@ -3191,17 +3177,25 @@ const OffresTab = ({ user, savedOnly = false }: any) => {
         (rechercheMotsSignificatifs.length > 0 && rechercheMotsSignificatifs.every((mot) => searchableText.includes(mot)))
       );
     })
-    .map(o => ({ ...o, _score: calculerScore(o, profilTalent) }))
-    .sort((a, b) => (b.priority_rank || 0) - (a.priority_rank || 0) || b._score - a._score);
+    .map((o) => {
+      const _matching = calculateMatchingResult(o, profilTalent);
+      return { ...o, _score: _matching.score, _matching };
+    })
+    .sort((a, b) =>
+      Number(b._matching.meetsRequiredPermits) - Number(a._matching.meetsRequiredPermits)
+      || (b.priority_rank || 0) - (a.priority_rank || 0)
+      || b._score - a._score
+    );
 
   // Compteurs bandeaux info
   const il7Jours = new Date(); il7Jours.setDate(il7Jours.getDate() - 7);
   const nbNouvellesAujourdhui = offres.filter(o => new Date(o.created_at) > new Date(new Date().setHours(0, 0, 0, 0))).length;
   const nbNouvellesSemaine = offres.filter(o => new Date(o.created_at) > il7Jours).length;
-  const nbMatchsForts = offresFiltrees.filter((offre) => offre._score >= 70).length;
+  const offresAvecPrerequis = offresFiltrees.filter((offre) => offre._matching.meetsRequiredPermits);
+  const nbMatchsForts = offresAvecPrerequis.filter((offre) => offre._score >= 70).length;
   const nbOffresUrgentes = offresFiltrees.filter((offre) => Boolean(offre.urgent)).length;
   const nbOffresAvecSalaire = offresFiltrees.filter((offre) => offre.salaire_min !== null || offre.salaire_max !== null).length;
-  const meilleurScoreVisible = offresFiltrees.length > 0 ? Math.max(...offresFiltrees.map((offre) => offre._score)) : 0;
+  const meilleurScoreVisible = offresAvecPrerequis.length > 0 ? Math.max(...offresAvecPrerequis.map((offre) => offre._score)) : 0;
   const contratActif = filtre === "Tous" ? "Tous les contrats" : filtre;
   const OffersPageIcon = savedOnly ? Heart : Crosshair;
 
@@ -3458,7 +3452,8 @@ const OffresTab = ({ user, savedOnly = false }: any) => {
           {offresFiltrees.map((offre) => {
             const isAujourdhui = new Date(offre.created_at) > new Date(new Date().setHours(0, 0, 0, 0));
             const isApplied = candidatures.includes(offre.id);
-            const badgeScore = getBadgeScore(offre._score);
+            const badgeScore = getBadgeScore(offre._score, offre._matching);
+            const hasMissingPermits = !offre._matching.meetsRequiredPermits;
             const competences = getCompetencesArray(offre.competences);
             const permis = getPermisArray(offre.permis_requis);
             const scoreBarClass =
@@ -3547,13 +3542,19 @@ const OffresTab = ({ user, savedOnly = false }: any) => {
                       <p className="text-[11px] font-semibold uppercase tracking-[0.24em] text-accent">Compatibilité</p>
                       <div className="mt-2 flex items-center justify-between gap-3">
                         <p className="text-sm font-semibold text-foreground">{badgeScore.label}</p>
-                        <span className="text-xl font-bold text-foreground">{offre._score}%</span>
+                        <span className="text-xl font-bold text-foreground">{hasMissingPermits ? "À vérifier" : `${offre._score}%`}</span>
                       </div>
-                      <div className="mt-2 h-1.5 overflow-hidden rounded-full bg-background/60">
-                        <div className={`h-full rounded-full bg-gradient-to-r ${scoreBarClass}`} style={{ width: `${Math.max(10, offre._score)}%` }} />
-                      </div>
+                      {!hasMissingPermits && (
+                        <div className="mt-2 h-1.5 overflow-hidden rounded-full bg-background/60">
+                          <div className={`h-full rounded-full bg-gradient-to-r ${scoreBarClass}`} style={{ width: `${Math.max(10, offre._score)}%` }} />
+                        </div>
+                      )}
                       <p className="mt-2 text-xs leading-5 text-muted-foreground">
-                        {isApplied ? "Candidature déjà envoyée." : "Offre disponible pour votre profil."}
+                        {hasMissingPermits
+                          ? `Déclaré manquant : ${offre._matching.missingRequiredPermits.join(", ")}. Vous pouvez tout de même postuler.`
+                          : isApplied
+                            ? "Candidature déjà envoyée."
+                            : "Offre disponible pour votre profil."}
                       </p>
                       <div className="mt-3 grid gap-1.5 sm:grid-cols-2 xl:grid-cols-1">
                         <Button className="h-7 justify-center text-xs" variant={isApplied ? "ghost-glow" : "glow"} size="sm" disabled={isApplied || postulant} onClick={() => commencerCandidature(offre)}>
