@@ -97,8 +97,10 @@ const Confidentialite = () => (
 
       <Section title="5. Matching, classement et décision humaine">
         <p>
-          Le matching actuel est un calcul par règles fondé sur le secteur (30 %), le contrat (20 %), la localisation
-          (20 %), les compétences (25 %) et les permis ou habilitations (5 %). Ces critères proviennent des
+          Le matching vérifie d’abord les permis ou habilitations explicitement requis. Leur absence déclarée est
+          signalée comme un prérequis manquant, mais ne bloque pas une candidature et ne produit aucun refus automatique.
+          Lorsque ces prérequis sont déclarés présents, le score repose sur les compétences (30 %), le secteur ou métier
+          (30 %), la localisation ou mobilité (20 %) et le contrat recherché (20 %). Ces critères proviennent des
           informations fournies par le talent et l’entreprise.
         </p>
         <p>

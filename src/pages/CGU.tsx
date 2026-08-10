@@ -111,9 +111,11 @@ const CGU = () => (
 
       <Section title="6. Matching et examen humain">
         <p>
-          Le score de correspondance est un indicateur calculé à partir des critères renseignés : secteur (30 %),
-          contrat (20 %), localisation (20 %), compétences (25 %) et permis ou habilitations (5 %). Il s’agit
-          actuellement d’un calcul par règles, et non d’une décision autonome prise par une intelligence artificielle.
+          Le matching vérifie d’abord les permis ou habilitations explicitement requis par l’offre. Un prérequis
+          déclaré manquant est signalé, sans empêcher le talent de postuler et sans entraîner de refus automatique.
+          Lorsque ces prérequis sont déclarés présents, le score de correspondance est calculé à partir des compétences
+          (30 %), du secteur ou métier (30 %), de la localisation ou mobilité (20 %) et du contrat recherché (20 %).
+          Il s’agit actuellement d’un calcul par règles, et non d’une décision autonome prise par une intelligence artificielle.
         </p>
         <p>
           Le score ne refuse ni n’accepte automatiquement une candidature. Il ne remplace pas l’examen humain et ne

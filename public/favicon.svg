@@ -1,16 +1,15 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" role="img" aria-labelledby="title">
-  <title>Spotted Talent</title>
-  <defs>
-    <linearGradient id="brand" x1="72" y1="52" x2="440" y2="468" gradientUnits="userSpaceOnUse">
-      <stop stop-color="#7C3AED"/>
-      <stop offset=".52" stop-color="#5B36D8"/>
-      <stop offset="1" stop-color="#38209C"/>
-    </linearGradient>
-    <filter id="shadow" x="-30%" y="-30%" width="160%" height="160%">
-      <feDropShadow dx="0" dy="10" stdDeviation="12" flood-color="#20105F" flood-opacity=".28"/>
-    </filter>
-  </defs>
-  <rect x="28" y="28" width="456" height="456" rx="140" fill="url(#brand)"/>
-  <path filter="url(#shadow)" fill="#fff" d="M256 87c11 88 29 118 108 169-79 51-97 81-108 169-11-88-29-118-108-169 79-51 97-81 108-169Zm0 69c-9 54-25 78-67 100 42 22 58 46 67 100 9-54 25-78 67-100-42-22-58-46-67-100Z"/>
-  <circle cx="389" cy="138" r="19" fill="#C4B5FD" opacity=".95"/>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 48 48" role="img" aria-labelledby="title">
+  <title id="title">Spotted Talent</title>
+  <g
+    fill="none"
+    stroke="#705CF6"
+    stroke-width="2.25"
+    stroke-linecap="round"
+    stroke-linejoin="round"
+    transform="translate(3 3) scale(1.75)"
+  >
+    <path d="M9.937 15.5A2 2 0 0 0 8.5 14.063l-6.135-1.582a.5.5 0 0 1 0-.962L8.5 9.936A2 2 0 0 0 9.937 8.5l1.582-6.135a.5.5 0 0 1 .963 0L14.063 8.5A2 2 0 0 0 15.5 9.937l6.135 1.581a.5.5 0 0 1 0 .964L15.5 14.063a2 2 0 0 0-1.437 1.437l-1.582 6.135a.5.5 0 0 1-.963 0z" />
+    <path d="M20 3v4" />
+    <path d="M22 5h-4" />
+  </g>
 </svg>

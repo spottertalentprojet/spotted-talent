@@ -1,4 +1,5 @@
 import { Link } from "react-router-dom";
+import EnterprisePaymentMethods from "@/components/EnterprisePaymentMethods";
 import TrustpilotFooterBadge from "@/components/TrustpilotFooterBadge";
 import { Button } from "@/components/ui/button";
 import ThemeToggle from "@/components/ThemeToggle";
@@ -367,18 +368,24 @@ const EntrepriseLanding = () => {
       </section>
 
       <footer className="border-t border-border/50 px-4 py-8">
+        <div className="mx-auto mb-7 max-w-7xl">
+          <EnterprisePaymentMethods />
+        </div>
         <div className="mx-auto grid max-w-7xl items-center gap-4 sm:grid-cols-[1fr_auto] xl:grid-cols-[1fr_auto_1fr]">
           <div className="flex items-center gap-2">
             <Sparkles className="h-5 w-5 text-primary" />
             <span className="font-bold gradient-text">Spotted Talent</span>
           </div>
-          <TrustpilotFooterBadge compact />
-          <div className="flex flex-col items-center gap-3 xl:items-end">
+          <div className="flex flex-col items-center gap-2">
+            <nav aria-label="Informations légales" className="flex flex-wrap items-center justify-center gap-x-4 gap-y-2">
+              <a href="/cgu" className="text-xs text-muted-foreground hover:text-foreground">Mentions légales & CGU</a>
+              <a href="/cgv" className="text-xs text-muted-foreground hover:text-foreground">CGV Entreprises</a>
+              <a href="/confidentialite" className="text-xs text-muted-foreground hover:text-foreground">Confidentialité</a>
+            </nav>
             <p className="text-xs text-muted-foreground">© 2026 Spotted Talent — La Ravoire, 73490</p>
-            <div className="flex flex-wrap justify-center gap-4">
-            <a href="/cgu" className="text-xs text-muted-foreground hover:text-foreground">Mentions légales & CGU</a>
-            <a href="/confidentialite" className="text-xs text-muted-foreground hover:text-foreground">Confidentialité</a>
-            </div>
+          </div>
+          <div className="flex justify-center xl:justify-end">
+            <TrustpilotFooterBadge compact />
           </div>
         </div>
       </footer>

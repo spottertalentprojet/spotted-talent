@@ -35,6 +35,7 @@ import {
   parseTalentAvailabilityFromBio,
   stripTalentAvailabilityMetadata,
 } from "@/lib/talentAvailability";
+import { calculateMatchingResult } from "@/lib/matching";
 import {
   ABONNEMENT_PLANS,
   BILLING_ADDONS,
@@ -3493,36 +3494,6 @@ const MesOffresTab = ({ user, entitlements, refreshToken = 0, onOffresChanged, o
   );
 };
 
-const normalizeMatchingValue = (value?: string | null) =>
-  String(value || "")
-    .normalize("NFD")
-    .replace(/[\u0300-\u036f]/g, "")
-    .toLowerCase();
-
-const calculateCandidateMatch = (offre: any, profil: any) => {
-  if (!offre || !profil) return 0;
-  let score = 0;
-  if (normalizeMatchingValue(offre.secteur) && normalizeMatchingValue(offre.secteur) === normalizeMatchingValue(profil.secteur)) score += 30;
-  if (normalizeMatchingValue(offre.contrat) && normalizeMatchingValue(offre.contrat) === normalizeMatchingValue(profil.contrat)) score += 20;
-  if (normalizeMatchingValue(offre.localisation) && normalizeMatchingValue(profil.localisation)) {
-    const offerLocation = normalizeMatchingValue(offre.localisation);
-    const candidateLocation = normalizeMatchingValue(profil.localisation);
-    if (offerLocation.includes(candidateLocation) || candidateLocation.includes(offerLocation)) score += 20;
-  }
-  const offerSkills = normalizeMatchingValue(offre.competences).split(/[,;\s]+/).filter((item) => item.length > 2);
-  const candidateSkills = normalizeMatchingValue(profil.competences).split(/[,;\s]+/).filter((item) => item.length > 2);
-  if (offerSkills.length > 0 && candidateSkills.length > 0) {
-    const matches = offerSkills.filter((skill) => candidateSkills.some((candidateSkill) => candidateSkill.includes(skill) || skill.includes(candidateSkill)));
-    score += Math.min(25, Math.round((matches.length / offerSkills.length) * 25));
-  }
-  if (normalizeMatchingValue(offre.permis_requis) && normalizeMatchingValue(profil.permis)) {
-    const requiredPermits = normalizeMatchingValue(offre.permis_requis).split(/[,;]+/).map((item) => item.trim()).filter(Boolean);
-    const candidatePermits = normalizeMatchingValue(profil.permis);
-    if (requiredPermits.some((permit) => candidatePermits.includes(permit))) score += 5;
-  }
-  return Math.min(100, score);
-};
-
 const escapeCsvCell = (value: unknown) => `"${String(value ?? "").replace(/"/g, '""')}"`;
 
 const CandidatsTab = ({
@@ -3546,7 +3517,11 @@ const CandidatsTab = ({
     const { data: offres } = await supabase.from("offres").select("id, titre, contrat, localisation, secteur, competences, permis_requis").eq("entreprise_id", user.id);
     if (!offres || offres.length === 0) { setLoading(false); return; }
     const ids = offres.map((o: any) => o.id);
-    const { data: cands } = await supabase.from("candidatures").select("*, offre:offre_id(titre, contrat, localisation)").in("offre_id", ids).order("created_at", { ascending: false });
+    const { data: cands } = await supabase
+      .from("candidatures")
+      .select("*, offre:offre_id(titre, contrat, localisation, secteur, competences, permis_requis)")
+      .in("offre_id", ids)
+      .order("created_at", { ascending: false });
     const candsAvecProfil = await Promise.all((cands || []).map(async (c: any) => {
       const { data: talentProfil } = await supabase.from("profiles").select("full_name, poste, localisation, competences, bio, email, secteur, contrat, permis").eq("user_id", c.talent_id).single();
       let talentAvatarUrl = null;
@@ -3557,7 +3532,8 @@ const CandidatsTab = ({
           talentAvatarUrl = data.publicUrl + "?t=" + Date.now();
         }
       } catch (err) { /* pas de photo */ }
-      return { ...c, talentProfil, talentAvatarUrl, matchScore: calculateCandidateMatch(c.offre, talentProfil) };
+      const matchResult = calculateMatchingResult(c.offre, talentProfil);
+      return { ...c, talentProfil, talentAvatarUrl, matchResult, matchScore: matchResult.score };
     }));
     setCandidatures(candsAvecProfil);
     setLoading(false);
@@ -3618,7 +3594,10 @@ const CandidatsTab = ({
         .filter(Boolean)
         .some((value) => String(value).toLowerCase().includes(query));
     })
-    .sort((a, b) => entitlements.candidateMatching ? (b.matchScore || 0) - (a.matchScore || 0) : 0);
+    .sort((a, b) => entitlements.candidateMatching
+      ? Number(b.matchResult?.meetsRequiredPermits) - Number(a.matchResult?.meetsRequiredPermits)
+        || (b.matchScore || 0) - (a.matchScore || 0)
+      : 0);
 
   const exporterCandidatures = () => {
     if (!entitlements.candidateExport) {
@@ -3634,7 +3613,9 @@ const CandidatsTab = ({
       getDisplayCandidatureStatus(c.statut),
       c.talentProfil?.localisation,
       c.talentProfil?.competences,
-      `${c.matchScore || 0}%`,
+      c.matchResult?.meetsRequiredPermits
+        ? `${c.matchScore || 0}%`
+        : `Prérequis manquant : ${c.matchResult?.missingRequiredPermits?.join(", ") || "permis ou habilitation"}`,
     ]);
     const csv = [headers, ...rows].map((row) => row.map(escapeCsvCell).join(";")).join("\r\n");
     const blob = new Blob([`\uFEFF${csv}`], { type: "text/csv;charset=utf-8" });
@@ -3786,15 +3767,21 @@ const CandidatsTab = ({
                   <div className="flex items-center gap-3 mb-2 flex-wrap">
                     <h3 className="font-bold">{formatDisplayLabel(c.offre?.titre) || "Offre"}</h3>
                     {entitlements.candidateMatching && (
-                      <span className={`rounded-full border px-2 py-0.5 text-xs font-semibold ${
-                        (c.matchScore || 0) >= 70
-                          ? "border-emerald-500/30 bg-emerald-500/10 text-emerald-300"
-                          : (c.matchScore || 0) >= 40
-                            ? "border-amber-500/30 bg-amber-500/10 text-amber-300"
-                            : "border-border bg-secondary text-muted-foreground"
-                      }`}>
-                        {c.matchScore || 0}% de correspondance
-                      </span>
+                      c.matchResult?.meetsRequiredPermits ? (
+                        <span className={`rounded-full border px-2 py-0.5 text-xs font-semibold ${
+                          (c.matchScore || 0) >= 70
+                            ? "border-emerald-500/30 bg-emerald-500/10 text-emerald-300"
+                            : (c.matchScore || 0) >= 40
+                              ? "border-amber-500/30 bg-amber-500/10 text-amber-300"
+                              : "border-border bg-secondary text-muted-foreground"
+                        }`}>
+                          {c.matchScore || 0}% de correspondance
+                        </span>
+                      ) : (
+                        <span className="rounded-full border border-amber-500/30 bg-amber-500/10 px-2 py-0.5 text-xs font-semibold text-amber-300">
+                          Prérequis permis manquant
+                        </span>
+                      )
                     )}
                     <span className={`text-xs px-2 py-0.5 rounded-full border ${
                       c.statut === "acceptee" ? "bg-green-500/10 text-green-400 border-green-500/20" :
@@ -3808,6 +3795,11 @@ const CandidatsTab = ({
                       </span>
                     )}
                   </div>
+                  {entitlements.candidateMatching && !c.matchResult?.meetsRequiredPermits && (
+                    <p className="mb-2 text-xs text-amber-300">
+                      Déclaré manquant : {c.matchResult?.missingRequiredPermits?.join(", ")}. Ce signalement n’empêche pas l’examen humain de la candidature.
+                    </p>
+                  )}
                   <div className="flex gap-3 text-xs text-muted-foreground mb-1.5 flex-wrap">
                     <span className="flex items-center gap-1"><FileText className="w-3 h-3" /> {formatDisplayLabel(c.offre?.contrat)}</span>
                     <span className="flex items-center gap-1"><MapPin className="w-3 h-3" /> {formatDisplayLabel(c.offre?.localisation) || "Non précisée"}</span>

@@ -21,6 +21,15 @@ const publicInformationPages = [
   .map((filePath) => readFileSync(resolve(process.cwd(), filePath), "utf8"))
   .join("\n");
 
+const matchingDisclosurePages = [
+  "src/pages/CGU.tsx",
+  "src/pages/Confidentialite.tsx",
+  "docs/rgpd/aipd-recrutement-matching.md",
+].map((filePath) => ({
+  filePath,
+  content: readFileSync(resolve(process.cwd(), filePath), "utf8"),
+}));
+
 describe("legal compliance helpers", () => {
   it("attache les versions juridiques courantes à une inscription", () => {
     expect(getLegalSignupMetadata("talent_email_signup")).toEqual({
@@ -73,5 +82,16 @@ describe("legal compliance helpers", () => {
 
   it("évite les points-virgules résiduels dans les textes publics", () => {
     expect(publicInformationPages).not.toMatch(/\s;/);
+  });
+
+  it("publie la même pondération et le même traitement des prérequis dans les deux espaces", () => {
+    matchingDisclosurePages.forEach(({ content, filePath }) => {
+      expect(content, filePath).toMatch(/Secteur|secteur/);
+      expect(content, filePath).toMatch(/30\s*(?:%|points)/);
+      expect(content, filePath).toMatch(/20\s*(?:%|points)/);
+      expect(content, filePath).toMatch(/prérequis/i);
+      expect(content, filePath).toMatch(/sans empêcher|n’empêche pas|ne bloque pas/i);
+      expect(content, filePath).toMatch(/aucun refus automatique|sans entraîner de refus automatique|ne produit aucun refus automatique/i);
+    });
   });
 });

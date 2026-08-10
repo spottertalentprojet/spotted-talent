@@ -59,11 +59,15 @@ Le score actuel est déterministe et n’utilise pas un modèle d’IA. Il addit
 
 | Critère | Pondération maximale |
 | --- | ---: |
-| Secteur | 30 points |
-| Type de contrat | 20 points |
+| Compétences déclarées | 30 points |
+| Secteur ou métier | 30 points |
 | Localisation | 20 points |
-| Compétences déclarées | 25 points |
-| Permis ou habilitations | 5 points |
+| Type de contrat | 20 points |
+| Permis ou habilitations explicitement requis | Prérequis hors score |
+
+L’absence déclarée d’un permis ou d’une habilitation obligatoire est affichée comme un prérequis manquant. Elle
+n’empêche pas le talent de postuler et ne déclenche aucun refus automatique. Le score chiffré est présenté lorsque
+les prérequis déclarés sont satisfaits.
 
 Garanties actuelles :
 
