@@ -7,3 +7,5 @@ mobile/.env
 mobile/.env.*
 mobile/.expo
 .codex-logs
+tmp/
+*.tsbuildinfo

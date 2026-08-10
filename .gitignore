@@ -31,6 +31,8 @@ test-results/
 .npm-cache
 supabase/.temp
 supabase/.branches
+tmp/
+*.tsbuildinfo
 .env*.local
 
 .env
