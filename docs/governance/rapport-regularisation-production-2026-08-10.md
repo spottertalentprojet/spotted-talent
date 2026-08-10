@@ -149,7 +149,8 @@ répercutée simultanément dans les CGU, la politique de confidentialité et l'
 - Commit du rapport initial : `7ee3e5a`
 - Commit de fusion dans `main` : `5ff6178`
 - Commit d'exclusion des artefacts locaux : `b6f9086`
-- État distant vérifié : `origin/main` pointe sur `b6f90867d8c8baabd2f78ce2a8d31f580745b8be`
+- Commit applicatif à l'origine du déploiement : `b6f90867d8c8baabd2f78ce2a8d31f580745b8be`
+- État distant vérifié : `origin/main` contient la fusion et le commit applicatif déployé
 - Arbre de travail applicatif propre après exclusion de `tmp/` et `*.tsbuildinfo`
 
 ### 9.2 Résultats des contrôles
