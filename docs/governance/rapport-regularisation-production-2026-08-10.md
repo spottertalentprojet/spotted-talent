@@ -140,3 +140,55 @@ synonymes métiers, distances géographiques et niveaux de maîtrise ne sont pas
 
 Toute évolution future des critères ou pondérations devra être décidée, documentée, testée dans les deux espaces et
 répercutée simultanément dans les CGU, la politique de confidentialité et l'AIPD.
+
+## 9. Résultats de la régularisation et de la publication
+
+### 9.1 Références Git finales
+
+- Branche de régularisation poussée : `origin/codex/production-reconciliation-2026-08-10`
+- Commit du rapport initial : `7ee3e5a`
+- Commit de fusion dans `main` : `5ff6178`
+- Commit d'exclusion des artefacts locaux : `b6f9086`
+- État distant vérifié : `origin/main` pointe sur `b6f90867d8c8baabd2f78ce2a8d31f580745b8be`
+- Arbre de travail applicatif propre après exclusion de `tmp/` et `*.tsbuildinfo`
+
+### 9.2 Résultats des contrôles
+
+- Vitest : 21 fichiers de tests réussis sur 21
+- Vitest : 70 tests réussis sur 70
+- Tests spécifiques matching : 4 réussis sur 4
+- Build Vite : réussi, 2 569 modules transformés
+- `git diff --check` : aucune erreur
+- Vérification répétée avant et après la fusion dans `main`
+
+### 9.3 Publication Vercel
+
+- Identifiant : `dpl_4hySm4XLTUZ9ZPWowKPiEvaYqzNW`
+- État : `READY`
+- Cible : production
+- Domaine principal : `https://www.spottedtalent.fr`
+- Alias confirmés : `www.spottedtalent.fr`, `spottedtalent.fr`, `swift-career-ai.vercel.app`
+
+Vérifications HTTP réalisées après publication :
+
+| Ressource | Résultat |
+| --- | ---: |
+| Page d'accueil | HTTP 200 |
+| Page Entreprise | HTTP 200 |
+| CGU | HTTP 200 |
+| Politique de confidentialité | HTTP 200 |
+| Bundle du matching partagé | HTTP 200 |
+
+Vérifications du contenu publié :
+
+- pondérations partagées 30/30/20/20 présentes dans le bundle ;
+- signalement « Prérequis permis manquant » présent côté Talent ;
+- même signalement présent côté Entreprise ;
+- CGU alignées sur le nouveau calcul ;
+- politique de confidentialité alignée sur le nouveau calcul.
+
+### 9.4 Supabase
+
+Aucun nouveau déploiement Supabase n'a été exécuté pour cette régularisation. Le moteur de matching est exécuté dans
+l'application web et les modifications juridiques sont des contenus front-end. Aucun nouveau schéma, aucune nouvelle
+policy RLS et aucune nouvelle Edge Function n'étaient nécessaires pour publier cette modification.
